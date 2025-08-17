@@ -2,7 +2,7 @@ services:
   - type: web
     name: tubenix
     env: node
-    buildCommand: npm run install-server
+    buildCommand: npm install && npm run install-server
     startCommand: npm start
     envVars:
       - key: NODE_ENV
