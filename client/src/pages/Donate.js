@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaHeart, FaCoffee, FaPaypal, FaBitcoin } from 'react-icons/fa';
+import { FaHeart, FaCoffee, FaPaypal } from 'react-icons/fa';
 import Header from '../components/Header';
 
 const Donate = () => {
@@ -41,20 +41,6 @@ const Donate = () => {
                 <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium">
                   Donate via PayPal
                 </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
-            <div className="text-center">
-              <FaBitcoin className="text-4xl text-yellow-600 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">Cryptocurrency</h3>
-              <p className="text-gray-600 mb-4">Support us with Bitcoin or other cryptocurrencies:</p>
-              <div className="bg-white rounded-lg p-4 font-mono text-sm text-gray-700 border">
-                BTC: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh
-              </div>
-              <div className="bg-white rounded-lg p-4 font-mono text-sm text-gray-700 border mt-2">
-                ETH: 0x742d35Cc6631C0532925a3b8D03C6b5c2c4b2d
               </div>
             </div>
           </div>

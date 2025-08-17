@@ -3,7 +3,6 @@ import {
   FaDownload,
   FaLink,
   FaVideo,
-  FaMusic,
   FaImage,
   FaFilter,
   FaSort,

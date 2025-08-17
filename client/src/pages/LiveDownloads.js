@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FaDownload, FaCheck, FaSpinner, FaExclamationCircle, FaArrowLeft, FaEye } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
@@ -13,6 +13,40 @@ const LiveDownloads = () => {
   // Get video URL and data from navigation state
   const videoData = location.state?.videoData;
   const videoUrl = location.state?.videoUrl;
+
+  // Simulate real-time download progress
+  const simulateDownloadProgress = useCallback((downloadId) => {
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 15; // Random progress increment
+
+      setDownloads(prev => prev.map(download => {
+        if (download.id === downloadId) {
+          if (progress >= 100) {
+            clearInterval(interval);
+            return {
+              ...download,
+              progress: 100,
+              status: 'completed',
+              speed: '0 KB/s',
+              eta: 'Complete',
+              fileSize: getRandomFileSize()
+            };
+          }
+
+          return {
+            ...download,
+            progress: Math.min(progress, 99),
+            status: 'downloading',
+            speed: getRandomSpeed(),
+            eta: getRandomETA(progress),
+            fileSize: progress > 20 ? getRandomFileSize() : 'Calculating...'
+          };
+        }
+        return download;
+      }));
+    }, 800); // Update every 800ms for realistic feel
+  }, []);
 
   useEffect(() => {
     // Show ads when page loads
@@ -41,41 +75,7 @@ const LiveDownloads = () => {
       setDownloads([initialDownload]);
       simulateDownloadProgress(initialDownload.id);
     }
-  }, [videoData, videoUrl, adsShown]);
-
-  // Simulate real-time download progress
-  const simulateDownloadProgress = (downloadId) => {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15; // Random progress increment
-      
-      setDownloads(prev => prev.map(download => {
-        if (download.id === downloadId) {
-          if (progress >= 100) {
-            clearInterval(interval);
-            return {
-              ...download,
-              progress: 100,
-              status: 'completed',
-              speed: '0 KB/s',
-              eta: 'Complete',
-              fileSize: getRandomFileSize()
-            };
-          }
-          
-          return {
-            ...download,
-            progress: Math.min(progress, 99),
-            status: 'downloading',
-            speed: getRandomSpeed(),
-            eta: getRandomETA(progress),
-            fileSize: progress > 20 ? getRandomFileSize() : 'Calculating...'
-          };
-        }
-        return download;
-      }));
-    }, 800); // Update every 800ms for realistic feel
-  };
+  }, [videoData, videoUrl, adsShown, simulateDownloadProgress]);
 
   // Helper functions for realistic data
   const getRandomSpeed = () => {

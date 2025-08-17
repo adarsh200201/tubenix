@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
 import { FaDownload, FaShare, FaTimes, FaPlay, FaLink } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -24,7 +24,6 @@ const MainDownloader = () => {
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStage, setLoadingStage] = useState('');
-  const [backendStatus, setBackendStatus] = useState('checking');
   const [downloadingFormats, setDownloadingFormats] = useState(new Set());
   const [selectedPlatform, setSelectedPlatform] = useState('YouTube');
   const [showOptions, setShowOptions] = useState(false);
@@ -33,64 +32,12 @@ const MainDownloader = () => {
   const [activeDownloadTab, setActiveDownloadTab] = useState('formats');
   const [isProcessPage, setIsProcessPage] = useState(false);
 
-
-  // Handle URL parameters and auto-process like 9xbuddy
-  useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const videoUrl = urlParams.get('url');
-
-    if (videoUrl && location.pathname === '/process') {
-      // Decode the URL parameter
-      const decodedUrl = decodeURIComponent(videoUrl);
-      setUrl(decodedUrl);
-      setIsProcessPage(true);
-      // Auto-process the URL
-      setTimeout(() => {
-        handleURLSubmitDirect(decodedUrl);
-      }, 500);
-    } else if (location.pathname === '/') {
-      setIsProcessPage(false);
-    }
-  }, [location]);
-
-  // Auto-switch tabs based on platform
-  useEffect(() => {
-    if (url) {
-      const platform = detectPlatform(url);
-      if (platform === 'Instagram') {
-        setActiveDownloadTab('instagram');
-      } else if (platform === 'YouTube') {
-        setActiveDownloadTab('formats');
-      } else {
-        setActiveDownloadTab('formats');
-      }
-    }
-  }, [url]);
-
-  // Check backend connectivity on component mount
-  useEffect(() => {
-    const checkBackend = async () => {
-      try {
-        setBackendStatus('checking');
-        const health = await healthCheck();
-        setBackendStatus('connected');
-        console.log('✅ Backend connected:', health);
-      } catch (error) {
-        console.error('❌ Backend disconnected:', error.message);
-        setBackendStatus('disconnected');
-        toast.error('Backend server is not running');
-      }
-    };
-
-    checkBackend();
-  }, []);
-
   const platforms = [
     'YouTube',
     'Instagram'
   ];
 
-  const handleURLSubmitDirect = async (videoUrl) => {
+  const handleURLSubmitDirect = useCallback(async (videoUrl) => {
     const urlToProcess = videoUrl || url;
     if (!urlToProcess.trim()) {
       toast.error('Please enter a valid URL');
@@ -147,7 +94,55 @@ const MainDownloader = () => {
       setLoadingProgress(0);
       setLoadingStage('');
     }
-  };
+  }, [url]);
+
+  // Handle URL parameters and auto-process like 9xbuddy
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const videoUrl = urlParams.get('url');
+
+    if (videoUrl && location.pathname === '/process') {
+      // Decode the URL parameter
+      const decodedUrl = decodeURIComponent(videoUrl);
+      setUrl(decodedUrl);
+      setIsProcessPage(true);
+      // Auto-process the URL
+      setTimeout(() => {
+        handleURLSubmitDirect(decodedUrl);
+      }, 500);
+    } else if (location.pathname === '/') {
+      setIsProcessPage(false);
+    }
+  }, [location, handleURLSubmitDirect]);
+
+  // Auto-switch tabs based on platform
+  useEffect(() => {
+    if (url) {
+      const platform = detectPlatform(url);
+      if (platform === 'Instagram') {
+        setActiveDownloadTab('instagram');
+      } else if (platform === 'YouTube') {
+        setActiveDownloadTab('formats');
+      } else {
+        setActiveDownloadTab('formats');
+      }
+    }
+  }, [url]);
+
+  // Check backend connectivity on component mount
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const health = await healthCheck();
+        console.log('✅ Backend connected:', health);
+      } catch (error) {
+        console.error('❌ Backend disconnected:', error.message);
+        toast.error('Backend server is not running');
+      }
+    };
+
+    checkBackend();
+  }, []);
 
   const handleURLSubmit = async (e) => {
     e.preventDefault();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
 import {
   FaDownload,
@@ -20,17 +20,7 @@ const StreamingDownloader = ({ videoData, url }) => {
   const platform = url ? detectPlatform(url) : 'Unknown';
   const isYouTubeUrl = platform === 'YouTube' || platform === 'Youtube Music';
 
-  // Load available formats when component mounts
-  useEffect(() => {
-    if (url && isYouTubeUrl) {
-      loadAvailableFormats();
-    } else {
-      setAvailableFormats([]);
-      setSelectedQuality('highest');
-    }
-  }, [url, isYouTubeUrl]);
-
-  const loadAvailableFormats = async () => {
+  const loadAvailableFormats = useCallback(async () => {
     if (!isYouTubeUrl) return;
 
     setLoadingFormats(true);
@@ -55,7 +45,17 @@ const StreamingDownloader = ({ videoData, url }) => {
     } finally {
       setLoadingFormats(false);
     }
-  };
+  }, [isYouTubeUrl, url]);
+
+  // Load available formats when component mounts
+  useEffect(() => {
+    if (url && isYouTubeUrl) {
+      loadAvailableFormats();
+    } else {
+      setAvailableFormats([]);
+      setSelectedQuality('highest');
+    }
+  }, [url, isYouTubeUrl, loadAvailableFormats]);
 
   const handleStreamingDownload = async () => {
     if (!url || !videoData) {

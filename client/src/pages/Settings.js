@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaCog, FaDownload, FaVolume, FaVideo, FaSave } from 'react-icons/fa';
+import { FaCog, FaDownload, FaVideo, FaSave } from 'react-icons/fa';
 import Header from '../components/Header';
 
 const Settings = () => {

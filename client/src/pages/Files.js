@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaFile, FaDownload, FaTrash, FaSyncAlt, FaLink, FaPlay } from 'react-icons/fa';
+import { FaFile, FaTrash, FaSyncAlt, FaLink, FaPlay } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import Header from '../components/Header';
 import { getDownloadedFiles } from '../services/api';
