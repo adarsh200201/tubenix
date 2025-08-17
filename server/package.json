@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
-    "axios": "^1.11.0",
+    "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0-rc.12",
     "cloudinary": "^1.40.0",
@@ -35,5 +35,9 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
   }
 }
