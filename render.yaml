@@ -1,18 +1,11 @@
 services:
   - type: web
-    name: tubenix-backend
+    name: tubenix
     env: node
-    buildCommand: npm install
+    buildCommand: npm run install-server
     startCommand: npm start
     envVars:
-      - key: PORT
-        value: 10000
       - key: NODE_ENV
         value: production
-      # Add other required environment variables here
-      # - key: MONGODB_URI
-      #   value: your-mongodb-uri
-      # - key: JWT_SECRET
-      #   value: your-jwt-secret
-      # - key: YOUTUBE_API_KEY
-      #   value: your-youtube-api-key
+      - key: PORT
+        value: 10000
