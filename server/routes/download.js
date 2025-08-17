@@ -5,6 +5,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const InstagramExtractor = require('../services/InstagramExtractor');
 const RealFileSizeCalculator = require('../services/RealFileSizeCalculator');
+const YouTubeDownloader = require('../services/YouTubeDownloader');
 const User = require('../models/User');
 
 // Simple cache for metadata like 9xbuddy

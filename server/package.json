@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "test:instagram": "node test-instagram.js",
     "build": "npm install",
-    "serve": "node server.js"
+    "serve": "node server.js",
+    "postinstall": "npx puppeteer browsers install chrome || echo 'Chrome installation failed'"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",

@@ -2,21 +2,31 @@ services:
   - type: web
     name: tubenix
     env: node
-    buildCommand: |
-      apt-get update && apt-get install -y wget gnupg
-      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
-      apt-get update && apt-get install -y google-chrome-stable
-      npm install && npm run build
+    plan: free
+    buildCommand: npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: RENDER
         value: true
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+      - key: MAX_BROWSERS
+        value: 1
+      - key: MAX_PAGES_PER_BROWSER
+        value: 2
+      - key: BROWSER_TIMEOUT
+        value: 30000
+      - key: PAGE_TIMEOUT
+        value: 20000
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 50
+      - key: HELMET_ENABLED
         value: true
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome-stable
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
+    disk:
+      name: cache
+      mountPath: /opt/render/.cache
+      sizeGB: 1

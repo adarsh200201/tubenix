@@ -81,7 +81,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // API Routes
-app.use('/api/download', require('./routes/download'));
+app.use('/api/download', require('./routes/download_new'));
 app.use('/api/streaming', require('./routes/streaming'));
 app.use('/api/instagram', require('./routes/instagram'));
 app.use('/api/platforms', require('./routes/platforms'));
