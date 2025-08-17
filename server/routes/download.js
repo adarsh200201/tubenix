@@ -6,6 +6,32 @@ const cheerio = require('cheerio');
 const InstagramExtractor = require('../services/InstagramExtractor');
 const RealFileSizeCalculator = require('../services/RealFileSizeCalculator');
 const User = require('../models/User');
+const youtubeRateLimitHandler = require('../services/YouTubeRateLimitHandler');
+
+// Enhanced cache to prevent duplicate requests and reduce rate limiting
+const metadataCache = new Map();
+const rateLimitCache = new Map(); // Track rate limit failures per URL
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache (increased for rate limiting)
+const RATE_LIMIT_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for rate limited URLs
+
+// Clean cache periodically
+setInterval(() => {
+  const now = Date.now();
+
+  // Clean metadata cache
+  for (const [key, value] of metadataCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      metadataCache.delete(key);
+    }
+  }
+
+  // Clean rate limit cache
+  for (const [key, value] of rateLimitCache.entries()) {
+    if (now - value.timestamp > RATE_LIMIT_CACHE_TTL) {
+      rateLimitCache.delete(key);
+    }
+  }
+}, 60000); // Clean every minute
 
 // Helper function to get proper content type based on container format
 function getContentType(container) {
@@ -66,6 +92,37 @@ async function trackDownload(downloadData) {
   }
 }
 
+// Cache status endpoint for monitoring
+router.get('/cache-status', async (req, res) => {
+  try {
+    const rateLimiterStatus = youtubeRateLimitHandler.getStatus();
+
+    res.json({
+      success: true,
+      cache: {
+        metadata_entries: metadataCache.size,
+        rate_limit_entries: rateLimitCache.size,
+        cache_ttl_minutes: CACHE_TTL / 60000,
+        rate_limit_ttl_minutes: RATE_LIMIT_CACHE_TTL / 60000
+      },
+      rate_limiter: {
+        request_count: rateLimiterStatus.requestCount,
+        consecutive_failures: rateLimiterStatus.consecutiveFailures,
+        circuit_open: rateLimiterStatus.isCircuitOpen,
+        circuit_open_time: rateLimiterStatus.circuitOpenTime,
+        time_until_retry_ms: rateLimiterStatus.timeUntilCircuitRetry
+      },
+      recent_rate_limited_urls: Array.from(rateLimitCache.keys()).slice(0, 5)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get cache status',
+      details: error.message
+    });
+  }
+});
+
 // Extract video metadata with enhanced support
 router.post('/metadata', async (req, res) => {
   try {
@@ -77,9 +134,30 @@ router.post('/metadata', async (req, res) => {
 
     // Detect platform
     const platform = detectPlatform(url);
-    
+
+    // Check cache first to reduce API calls
+    const cacheKey = `${platform}_${url}`;
+    const cached = metadataCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      console.log('🚀 Returning cached metadata for:', url);
+      return res.json(cached.data);
+    }
+
+    // Check if this URL was recently rate limited
+    const rateLimitKey = `ratelimit_${url}`;
+    const rateLimited = rateLimitCache.get(rateLimitKey);
+    if (rateLimited && (Date.now() - rateLimited.timestamp < RATE_LIMIT_CACHE_TTL)) {
+      const minutesLeft = Math.ceil((RATE_LIMIT_CACHE_TTL - (Date.now() - rateLimited.timestamp)) / 60000);
+      console.log(`⏳ URL recently rate limited, ${minutesLeft} minutes until retry allowed`);
+      return res.status(429).json({
+        error: `This video was recently rate limited by YouTube. Please wait ${minutesLeft} more minutes before trying again.`,
+        suggestion: 'Try a different video or wait for the rate limit to reset.',
+        retryAfter: rateLimited.timestamp + RATE_LIMIT_CACHE_TTL
+      });
+    }
+
     let metadata = {};
-    
+
     if (platform === 'YouTube' || platform === 'Youtube Music') {
       // Use ytdl-core for YouTube with multiple extraction strategies
       try {
@@ -90,12 +168,15 @@ router.post('/metadata', async (req, res) => {
 
         console.log('🔍 Attempting YouTube extraction with enhanced strategy...');
 
+        // Check rate limiter status
+        const rateLimiterStatus = youtubeRateLimitHandler.getStatus();
+        console.log('📊 Rate limiter status:', {
+          failures: rateLimiterStatus.consecutiveFailures,
+          circuitOpen: rateLimiterStatus.isCircuitOpen,
+          timeUntilRetry: rateLimiterStatus.timeUntilCircuitRetry
+        });
+
         let info = null;
-        const userAgents = [
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        ];
 
         // First try alternative extraction method for real data
         let realDataExtracted = false;
@@ -103,18 +184,8 @@ router.post('/metadata', async (req, res) => {
         try {
           console.log('🔍 Trying alternative YouTube extraction for real data...');
 
-          // Method 1: Direct YouTube page scraping with better parsing
-          const response = await axios.get(url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.5',
-              'Accept-Encoding': 'gzip, deflate',
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            },
-            timeout: 15000
-          });
+          // Use rate-limited page scraping
+          const response = await youtubeRateLimitHandler.scrapeYouTubePage(url);
 
           const $ = cheerio.load(response.data);
 
@@ -340,45 +411,24 @@ router.post('/metadata', async (req, res) => {
 
         // Only try ytdl-core if real data extraction failed
         if (!realDataExtracted) {
-          console.log('���� Falling back to ytdl-core extraction...');
+          console.log('🛡️ Falling back to enhanced ytdl-core extraction...');
 
-          // Try different extraction strategies with reduced timeout
-          for (let i = 0; i < userAgents.length; i++) {
-            try {
-              console.log(`🔄 Trying extraction strategy ${i + 1}/${userAgents.length}...`);
+          try {
+            // Use the enhanced rate limit handler
+            info = await youtubeRateLimitHandler.getVideoInfo(url);
+            console.log('✅ Successfully extracted video info with rate limit handler');
+          } catch (handlerError) {
+            console.log('❌ Enhanced extraction failed:', handlerError.message);
 
-              info = await ytdl.getInfo(url, {
-                requestOptions: {
-                  headers: {
-                    'User-Agent': userAgents[i],
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                  },
-                  maxRedirects: 5,
-                  timeout: 10000 // Reduced timeout to fail faster and use fallback
-                },
-                // Request all available formats including premium qualities
-                lang: 'en',
-                // Different quality strategies
-                quality: i === 0 ? 'highestvideo' : i === 1 ? 'highest' : 'best'
-              });
-
-              if (info && info.formats && info.formats.length > 0) {
-                console.log(`✅ Successfully extracted with strategy ${i + 1}`);
-                break;
-              }
-            } catch (strategyError) {
-              console.log(`❌ Strategy ${i + 1} failed:`, strategyError.message);
-              if (i === userAgents.length - 1) {
-                throw strategyError; // Re-throw on last attempt
-              }
-              // Wait a bit before trying next strategy
-              await new Promise(resolve => setTimeout(resolve, 500));
+            // If the handler failed due to circuit breaker or consistent rate limits,
+            // provide a more helpful error message
+            if (handlerError.message.includes('temporarily disabled') ||
+                handlerError.message.includes('temporarily overloaded')) {
+              throw handlerError; // Pass through the informative error
             }
+
+            // For other errors, continue to fallback
+            throw handlerError;
           }
         }
 
@@ -912,7 +962,44 @@ router.post('/metadata', async (req, res) => {
             });
           } catch (fallbackError) {
             console.error('Fallback extraction also failed:', fallbackError.message);
-            throw new Error('Unable to process this YouTube video. This may be due to: 1) Video is private/unavailable, 2) Age-restricted content, 3) YouTube anti-bot measures. Please try a different video or try again later.');
+
+            // Enhanced error handling with more specific messages
+            if (fallbackError.message.includes('429') ||
+                fallbackError.message.includes('Too Many Requests') ||
+                fallbackError.message.includes('temporarily overloaded') ||
+                fallbackError.message.includes('temporarily disabled')) {
+              console.log('🚦 Rate limiting detected - caching URL and providing enhanced service message');
+
+              // Cache this URL as rate limited to prevent immediate retries
+              const rateLimitKey = `ratelimit_${url}`;
+              rateLimitCache.set(rateLimitKey, {
+                timestamp: Date.now(),
+                failureCount: (rateLimitCache.get(rateLimitKey)?.failureCount || 0) + 1
+              });
+
+              // Get current rate limiter status for better feedback
+              const status = youtubeRateLimitHandler.getStatus();
+
+              if (status.isCircuitOpen) {
+                const minutesLeft = Math.ceil(status.timeUntilCircuitRetry / 60000);
+                throw new Error(`🔄 YouTube extraction service is temporarily paused due to rate limits. Service will resume automatically in approximately ${minutesLeft} minutes. Please try again later or use a different video.`);
+              } else {
+                throw new Error('⏳ YouTube is currently rate limiting requests. Please wait 2-3 minutes and try again. This temporary pause helps maintain stable service for all users.');
+              }
+            }
+
+            if (fallbackError.message.includes('Video unavailable') ||
+                fallbackError.message.includes('private')) {
+              throw new Error('❌ This video is private or unavailable. Please check the URL and try a different public video.');
+            }
+
+            if (fallbackError.message.includes('age') ||
+                fallbackError.message.includes('restricted')) {
+              throw new Error('🔞 This video is age-restricted and cannot be processed. Please try a different video.');
+            }
+
+            // Generic fallback with helpful suggestions
+            throw new Error('⚠️ Unable to process this YouTube video. This may be due to: 1) Video privacy settings, 2) Age restrictions, 3) YouTube anti-bot measures, or 4) Temporary service issues. Please try a different public video or wait a few minutes and try again.');
           }
         }
       }
@@ -1272,7 +1359,7 @@ router.post('/video', async (req, res) => {
             // Filename will be updated after format selection to include actual quality
           }
 
-          console.log('��� Starting ytdl-core streaming download...');
+          console.log('���� Starting ytdl-core streaming download...');
           console.log('📊 Download options:', downloadOptions);
 
           // Try to get the best format available
@@ -1530,7 +1617,7 @@ router.post('/video', async (req, res) => {
             } else if (percent >= 75 && percent < 76) {
               console.log(`📥 Download progress: 75%`);
             } else if (percent >= 99 && percent < 100) {
-              console.log(`📥 Download progress: Complete`);
+              console.log(`�� Download progress: Complete`);
             }
           });
 

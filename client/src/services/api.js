@@ -55,7 +55,28 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 429) {
-      return Promise.reject(new Error('Too many requests. Please wait a moment and try again.'));
+      const errorData = error.response?.data;
+      let rateLimitMessage = 'Too many requests. Please wait a moment and try again.';
+
+      if (errorData?.error) {
+        rateLimitMessage = errorData.error;
+      }
+
+      if (errorData?.suggestion) {
+        rateLimitMessage += ` ${errorData.suggestion}`;
+      }
+
+      if (errorData?.retryAfter) {
+        const retryTime = new Date(errorData.retryAfter);
+        const now = new Date();
+        const minutesLeft = Math.ceil((retryTime - now) / 60000);
+
+        if (minutesLeft > 0) {
+          rateLimitMessage += ` Please wait ${minutesLeft} more minutes.`;
+        }
+      }
+
+      return Promise.reject(new Error(rateLimitMessage));
     }
 
     if (error.response?.status === 500) {
@@ -117,14 +138,24 @@ export const extractVideoMetadata = async (url, retryCount = 0) => {
 
     return response.data;
   } catch (error) {
-    // Retry logic for server errors and rate limiting
-    if (retryCount < MAX_RETRIES && (
+    // Enhanced retry logic for server errors and rate limiting
+    const shouldRetry = retryCount < MAX_RETRIES && (
       error.message.includes('Server Error') ||
-      error.message.includes('Too many requests') ||
-      error.message.includes('timeout')
-    )) {
+      (error.message.includes('Too many requests') && !error.message.includes('wait') && !error.message.includes('minutes')) ||
+      error.message.includes('timeout') ||
+      error.message.includes('temporarily overloaded')
+    );
+
+    // Don't retry if the error message contains specific wait times or circuit breaker messages
+    const shouldNotRetry = error.message.includes('temporarily paused') ||
+                          error.message.includes('wait') && error.message.includes('minutes') ||
+                          error.message.includes('recently rate limited');
+
+    if (shouldRetry && !shouldNotRetry) {
       console.log(`Retrying metadata extraction... (${retryCount + 1}/${MAX_RETRIES})`);
-      await sleep(RETRY_DELAY * (retryCount + 1));
+      // Longer delay for rate limit errors
+      const delay = error.message.includes('rate limit') ? RETRY_DELAY * 3 : RETRY_DELAY;
+      await sleep(delay * (retryCount + 1));
       return extractVideoMetadata(url, retryCount + 1);
     }
     console.error('❌ Failed to extract metadata:', error.message);
