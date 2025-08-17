@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// Use Render backend URL in production, localhost in development
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://tubenix.onrender.com/api' 
+  : 'http://localhost:5000/api';
+
+console.log('Using API base URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
