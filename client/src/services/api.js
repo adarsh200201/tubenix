@@ -241,6 +241,17 @@ export const downloadVideo = async (url, format = 'mp4', quality = 'best') => {
       if (data.downloadUrl) {
         window.open(data.downloadUrl, '_blank');
         return { success: true, message: 'Download link opened in new tab!' };
+      } else if (data.downloadType === 'manual') {
+        // Handle 9xbuddy-style manual download response
+        return {
+          success: false,
+          message: data.message || 'Manual download required',
+          downloadType: 'manual',
+          instructions: data.instructions || [],
+          suggestion: data.suggestion,
+          note: data.note,
+          videoInfo: data.videoInfo
+        };
       } else if (data.downloadType === 'adaptive_muxing' && data.videoStream && data.audioStream) {
         // Handle YouTube adaptive streaming response
         return {

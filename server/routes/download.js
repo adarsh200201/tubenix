@@ -656,7 +656,7 @@ router.post('/metadata', async (req, res) => {
         console.log(`  ���� 2K formats (1440p): ${qhd2kFormats.length}`);
         console.log(`  ✨ FHD formats (1080p): ${fhdFormats.length}`);
         console.log(`  �� HD formats (720p): ${hdFormats.length}`);
-        console.log(`  📱 Total all formats: ${allFormats.length}`);
+        console.log(`  ���� Total all formats: ${allFormats.length}`);
 
         if (uhd4kFormats.length > 0) {
           console.log('🎆 Available 4K+ formats:', uhd4kFormats.map(f => `${f.height}p (${f.container})`));
@@ -1712,55 +1712,31 @@ router.post('/video', async (req, res) => {
         } catch (error) {
           console.error('❌ ytdl-core download failed:', error.message);
 
-          // Try alternative download method for real files
-          try {
-            console.log('🔄 Attempting alternative download method for real file...');
+          // 9xbuddy-style simple response
+          console.log('🔥 Using 9xbuddy-style download response...');
 
-            // Use yt-dlp style extraction for real downloads
-            const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1];
-            if (videoId) {
-              // Get real download URL from YouTube's internal API
-              const downloadUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1] || 'unknown';
+          const isAudioFormat = quality.includes('kbps') || quality.includes('mp3') || quality.includes('audio');
 
-              // Set appropriate headers for real file download
-              const title = `video_${videoId}_${quality}`;
-              const extension = isAudioOnly ? 'm4a' : 'mp4';
-
-              res.header('Content-Type', isAudioOnly ? 'audio/mp4' : 'video/mp4');
-              res.header('Content-Disposition', `attachment; filename="${title}.${extension}"`);
-              res.header('Accept-Ranges', 'bytes');
-
-              // Create a proxy download stream that gets real file
-              const axios = require('axios');
-              const proxyStream = await axios({
-                method: 'GET',
-                url: downloadUrl,
-                responseType: 'stream',
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                  'Accept': '*/*',
-                  'Accept-Encoding': 'identity',
-                  'Range': 'bytes=0-'
-                },
-                timeout: 30000
-              });
-
-              // Pipe real video data to response
-              proxyStream.data.pipe(res);
-
-              proxyStream.data.on('error', (streamError) => {
-                console.error('❌ Alternative download stream error:', streamError.message);
-                if (!res.headersSent) {
-                  res.status(500).json({ error: 'Alternative download method failed' });
-                }
-              });
-
-              console.log('✅ Alternative download method started successfully');
-              return; // Exit function successfully
-            }
-          } catch (altError) {
-            console.error('❌ Alternative download method failed:', altError.message);
-          }
+          return res.json({
+            success: false,
+            message: `YouTube download for ${quality} quality is temporarily blocked.`,
+            suggestion: 'Try using browser extensions or third-party downloaders.',
+            downloadType: 'manual',
+            instructions: [
+              '1. Copy the video URL: ' + url,
+              '2. Use a browser extension like "Video DownloadHelper"',
+              '3. Or try online converters like 9xbuddy.com',
+              '4. Or use yt-dlp command line tool'
+            ],
+            videoInfo: {
+              videoId: videoId,
+              requestedQuality: quality,
+              format: format,
+              isAudio: isAudioFormat
+            },
+            note: 'YouTube has stronger anti-bot measures. Manual methods work better.'
+          });
 
           // Determine appropriate status code and message based on error type
           let statusCode = 503;
