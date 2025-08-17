@@ -7,6 +7,7 @@ import DownloadOptionsPanel from './DownloadOptionsPanel';
 import StreamingDownloader from './StreamingDownloader';
 import BatchDownloader from './BatchDownloader';
 import InstagramDownloader from './InstagramDownloader';
+import ConnectionStatus from './ConnectionStatus';
 
 const MainDownloader = () => {
   const navigate = useNavigate();
@@ -395,7 +396,10 @@ const MainDownloader = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto space-y-6">
-          
+
+          {/* Connection Status */}
+          <ConnectionStatus />
+
           {/* URL Input Section */}
           <div className="bg-white rounded-lg p-6 shadow-sm border">
             <form onSubmit={handleURLSubmit} className="space-y-4">

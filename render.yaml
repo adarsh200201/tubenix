@@ -3,8 +3,12 @@ services:
     name: tubenix
     env: node
     plan: free
-    buildCommand: npm run build
-    startCommand: npm start
+    buildCommand: |
+      npm run install-server &&
+      npm run install-client &&
+      npx puppeteer browsers install chrome &&
+      cd client && npm run build
+    startCommand: cd server && npm start
     envVars:
       - key: NODE_ENV
         value: production

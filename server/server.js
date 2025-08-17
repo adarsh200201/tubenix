@@ -35,7 +35,10 @@ app.use(cors({
     'http://localhost:5000',
     'http://localhost:48752', // Additional dev environment port
     'https://tubenix.onrender.com', // Production domain
-    'https://tubenix.netlify.app', // Netlify domain
+    'https://tubenix.netlify.app', // Netlify frontend
+    'https://tubenix-frontend.netlify.app', // Alternative Netlify domain
+    'https://main--tubenix.netlify.app', // Netlify branch preview
+    'https://deploy-preview-*--tubenix.netlify.app', // Netlify deploy previews
     process.env.CORS_ORIGIN,
     // Development environment variations
     'http://127.0.0.1:3000',
@@ -43,7 +46,9 @@ app.use(cors({
     'http://127.0.0.1:5000',
     'http://127.0.0.1:48752'
   ].filter(Boolean),
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));

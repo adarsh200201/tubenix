@@ -1,11 +1,32 @@
 import axios from 'axios';
 
-// Use Render backend URL in production, localhost in development
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://tubenix.onrender.com/api' 
-  : 'http://localhost:5000/api';
+// Determine API base URL based on environment and deployment
+const getApiBaseUrl = () => {
+  // If we're in development
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:5000/api';
+  }
 
-console.log('Using API base URL:', API_BASE_URL);
+  // If we're on Netlify (production frontend)
+  if (window.location.hostname.includes('netlify.app') ||
+      window.location.hostname.includes('tubenix.netlify.app')) {
+    return 'https://tubenix.onrender.com/api';
+  }
+
+  // If we're on Render (full-stack deployment)
+  if (window.location.hostname.includes('onrender.com')) {
+    return '/api'; // Use relative URL for same-origin requests
+  }
+
+  // Default to Render backend for production
+  return 'https://tubenix.onrender.com/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+console.log('🔗 Using API base URL:', API_BASE_URL);
+console.log('🌐 Current hostname:', window.location.hostname);
+console.log('🚀 Environment:', process.env.NODE_ENV);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -417,13 +438,43 @@ export const getInstagramFeatures = async () => {
   }
 };
 
-// Health check
+// Health check with connection testing
 export const healthCheck = async () => {
   try {
-    const response = await api.get('/health');
-    return response.data;
+    console.log('📞 Testing backend connection...');
+    const response = await api.get('/health', { timeout: 10000 });
+    console.log('✅ Backend connection successful:', response.data);
+    return {
+      ...response.data,
+      backendUrl: API_BASE_URL,
+      connected: true
+    };
   } catch (error) {
+    console.error('❌ Backend connection failed:', error.message);
+
+    // If we're on Netlify and the main backend fails, show helpful error
+    if (window.location.hostname.includes('netlify.app')) {
+      throw new Error(`Backend server (${API_BASE_URL}) is not responding. The backend may need to be deployed or started.`);
+    }
+
     throw error;
+  }
+};
+
+// Test backend connection on app load
+export const testConnection = async () => {
+  try {
+    const health = await healthCheck();
+    console.log('🟢 Connection test passed:', health);
+    return { connected: true, ...health };
+  } catch (error) {
+    console.error('🔴 Connection test failed:', error.message);
+    return {
+      connected: false,
+      error: error.message,
+      backendUrl: API_BASE_URL,
+      suggestion: 'Please ensure the backend server is running and accessible.'
+    };
   }
 };
 
