@@ -47,7 +47,7 @@ class HeadlessBrowserPool {
    */
   async initializePool() {
     console.log('🚀 Initializing headless browser pool...');
-    
+
     try {
       for (let i = 0; i < this.maxBrowsers; i++) {
         const browser = await this.createBrowser();
@@ -60,14 +60,19 @@ class HeadlessBrowserPool {
           });
         }
       }
-      
+
       console.log(`✅ Browser pool initialized with ${this.browsers.length} browsers`);
-      
-      // Start health monitoring
-      this.startHealthMonitor();
-      
+
+      // Start health monitoring only if we have browsers
+      if (this.browsers.length > 0) {
+        this.startHealthMonitor();
+      } else {
+        console.log('⚠️ No browsers available - Instagram features may be limited');
+      }
+
     } catch (error) {
       console.error('❌ Failed to initialize browser pool:', error.message);
+      console.log('⚠️ Continuing without browser pool - basic functionality will work');
     }
   }
 
@@ -76,13 +81,23 @@ class HeadlessBrowserPool {
    */
   async createBrowser() {
     try {
-      const browser = await puppeteer.launch({
+      // Check if Chrome is available in the environment
+      const isRenderEnvironment = process.env.RENDER || process.env.NODE_ENV === 'production';
+
+      const launchOptions = {
         headless: 'new',
         args: this.browserArgs,
         timeout: 10000, // 10 second launch timeout
         ignoreDefaultArgs: ['--enable-automation'],
         defaultViewport: { width: 375, height: 812 } // Mobile viewport
-      });
+      };
+
+      // Add executable path for Render environment
+      if (isRenderEnvironment && process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+
+      const browser = await puppeteer.launch(launchOptions);
 
       console.log('🌐 New browser instance created');
       return browser;

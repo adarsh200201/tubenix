@@ -34,6 +34,8 @@ app.use(cors({
     'http://localhost:4000',
     'http://localhost:5000',
     'http://localhost:48752', // Additional dev environment port
+    'https://tubenix.onrender.com', // Production domain
+    'https://tubenix.netlify.app', // Netlify domain
     process.env.CORS_ORIGIN,
     // Development environment variations
     'http://127.0.0.1:3000',
@@ -95,11 +97,37 @@ try {
 
 // Serve static files from React app in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/build')));
-  
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
-  });
+  const buildPath = path.join(__dirname, '../client/build');
+
+  // Check if build directory exists
+  const fs = require('fs');
+  if (fs.existsSync(buildPath)) {
+    app.use(express.static(buildPath));
+
+    // Handle React Router routes
+    app.get('*', (req, res) => {
+      // Don't serve index.html for API routes
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
+
+      const indexPath = path.join(buildPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).json({ error: 'Client build not found - please run build process' });
+      }
+    });
+  } else {
+    console.log('⚠️ Client build directory not found. Serving API only.');
+    app.get('/', (req, res) => {
+      res.json({
+        message: 'Tubenix API Server',
+        status: 'running',
+        note: 'Client build not available - API endpoints accessible at /api/*'
+      });
+    });
+  }
 }
 
 // Health check endpoint
@@ -122,9 +150,9 @@ app.use((error, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// 404 handler for API routes only
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API route not found' });
 });
 
 app.listen(PORT, () => {
