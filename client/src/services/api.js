@@ -10,7 +10,7 @@ const getApiBaseUrl = () => {
   // If we're on Netlify (production frontend)
   if (window.location.hostname.includes('netlify.app') ||
       window.location.hostname.includes('tubenix.netlify.app')) {
-    return 'https://tubenix.onrender.com/api';
+    return 'https://tubenix-1.onrender.com/api';
   }
 
   // If we're on Render (full-stack deployment)
@@ -19,7 +19,7 @@ const getApiBaseUrl = () => {
   }
 
   // Default to Render backend for production
-  return 'https://tubenix.onrender.com/api';
+  return 'https://tubenix-1.onrender.com/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

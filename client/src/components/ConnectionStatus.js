@@ -74,7 +74,7 @@ const ConnectionStatus = () => {
           <br />
           • Make sure the backend is deployed on Render
           <br />
-          • Check if https://tubenix.onrender.com/api/health responds
+          • Check if https://tubenix-1.onrender.com/api/health responds
           <br />
           • Verify CORS settings allow Netlify domain
         </div>

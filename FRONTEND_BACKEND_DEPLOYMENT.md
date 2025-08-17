@@ -5,7 +5,7 @@
 The Tubenix application is experiencing a **frontend-backend connection issue**:
 
 - **Frontend**: Deployed on Netlify (https://tubenix.netlify.app/)
-- **Backend**: Expected on Render (https://tubenix.onrender.com/)
+- **Backend**: Expected on Render (https://tubenix-1.onrender.com/)
 - **Problem**: Backend not responding to frontend requests
 
 ## Quick Fix Steps
@@ -47,7 +47,7 @@ PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer
 
 After deployment, visit:
 - Frontend: https://tubenix.netlify.app/
-- Backend Health: https://tubenix.onrender.com/api/health
+- Backend Health: https://tubenix-1.onrender.com/api/health
 
 The frontend will show a connection status indicator.
 
@@ -103,7 +103,7 @@ const getApiBaseUrl = () => {
   
   // Netlify deployment (production frontend)
   if (window.location.hostname.includes('netlify.app')) {
-    return 'https://tubenix.onrender.com/api';
+    return 'https://tubenix-1.onrender.com/api';
   }
   
   // Render deployment (full-stack)
@@ -112,7 +112,7 @@ const getApiBaseUrl = () => {
   }
   
   // Default fallback
-  return 'https://tubenix.onrender.com/api';
+  return 'https://tubenix-1.onrender.com/api';
 };
 ```
 
@@ -122,7 +122,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'https://tubenix.netlify.app',
-    'https://tubenix.onrender.com',
+    'https://tubenix-1.onrender.com',
     'https://main--tubenix.netlify.app',
     // ... other origins
   ],
@@ -143,7 +143,7 @@ app.use(cors({
 1. **Backend not deployed**
    ```bash
    # Check if backend responds
-   curl https://tubenix.onrender.com/api/health
+   curl https://tubenix-1.onrender.com/api/health
    
    # If 404 or no response, deploy backend to Render
    ```
@@ -204,7 +204,7 @@ echo "✅ Frontend build complete"
 ```
 tubenix/
 ├── client/                 # Frontend (deploys to Netlify)
-│   ├── src/
+��   ├── src/
 │   ├── public/
 │   ├── netlify.toml       # Netlify configuration
 │   └── package.json
@@ -240,14 +240,14 @@ HELMET_ENABLED=true
 ### Frontend (Netlify)
 ```env
 # Built into the React app
-REACT_APP_API_URL=https://tubenix.onrender.com/api
+REACT_APP_API_URL=https://tubenix-1.onrender.com/api
 ```
 
 ## Testing Deployment
 
 ### 1. Backend Health Check
 ```bash
-curl https://tubenix.onrender.com/api/health
+curl https://tubenix-1.onrender.com/api/health
 # Should return: {"status":"Server is running","port":5000,...}
 ```
 
@@ -284,7 +284,7 @@ Visit https://tubenix.netlify.app/
 ## Monitoring
 
 ### Health Endpoints
-- Backend: `https://tubenix.onrender.com/api/health`
+- Backend: `https://tubenix-1.onrender.com/api/health`
 - Frontend: Built-in connection status component
 
 ### Logs

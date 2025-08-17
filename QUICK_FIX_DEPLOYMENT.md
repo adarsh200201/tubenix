@@ -63,13 +63,13 @@ PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer
 
 After deployment:
 1. **Build should complete successfully** (no more Tailwind errors)
-2. **Backend will be available** at `https://tubenix.onrender.com`
-3. **Health check** should work: `https://tubenix.onrender.com/api/health`
+2. **Backend will be available** at `https://tubenix-1.onrender.com`
+3. **Health check** should work: `https://tubenix-1.onrender.com/api/health`
 4. **Frontend on Netlify** will connect successfully
 
 ## Testing
 
-1. **Check backend health**: Visit `https://tubenix.onrender.com/api/health`
+1. **Check backend health**: Visit `https://tubenix-1.onrender.com/api/health`
 2. **Test frontend**: Visit `https://tubenix.netlify.app/`
 3. **Look for green banner**: "✅ Backend connected"
 4. **Try a YouTube download**: Paste any YouTube URL and test
