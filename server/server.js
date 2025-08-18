@@ -34,7 +34,7 @@ app.use(cors({
     'http://localhost:4000',
     'http://localhost:5000',
     'http://localhost:48752', // Additional dev environment port
-    'https://tubenix-1.onrender.com', // Production domain
+    'https://tubenix.onrender.com', // Production domain
     'https://tubenix.netlify.app', // Netlify frontend
     'https://tubenix-frontend.netlify.app', // Alternative Netlify domain
     'https://main--tubenix.netlify.app', // Netlify branch preview
