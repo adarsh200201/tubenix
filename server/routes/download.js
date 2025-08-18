@@ -1635,21 +1635,75 @@ router.post('/video', async (req, res) => {
           const contentType = getContentType(chosenFormat.container || actualContainer);
           res.header('Content-Type', contentType);
           res.header('Content-Disposition', `attachment; filename="${filename}"`);
+          res.header('X-Download-ID', downloadId.toString()); // Send download ID for tracking
           console.log('📄 Download filename:', filename);
           console.log('📋 Content-Type:', contentType);
+          console.log('🆔 Download ID:', downloadId);
 
-          // Create download stream with integrity validation
+          // Generate download ID for tracking
+          const downloadId = Date.now();
+          const expectedSize = chosenFormat.contentLength;
+
+          // Initialize download tracking
+          activeDownloads.set(downloadId, {
+            progress: 0,
+            status: 'initializing',
+            speed: '0 KB/s',
+            eta: 'Calculating...',
+            fileSize: expectedSize ? formatFileSize(expectedSize) : 'Unknown',
+            startTime: new Date(),
+            url: url,
+            title: info.videoDetails.title
+          });
+
+          // Create download stream with real-time tracking
           const downloadStream = ytdl(url, { format: chosenFormat });
 
-          // Add integrity validation
           let receivedBytes = 0;
-          const expectedSize = chosenFormat.contentLength;
+          let lastProgressUpdate = Date.now();
+          let lastReceivedBytes = 0;
 
           downloadStream.on('data', (chunk) => {
             receivedBytes += chunk.length;
+
+            // Update progress every 500ms
+            const now = Date.now();
+            if (now - lastProgressUpdate > 500) {
+              const progress = expectedSize ? Math.min((receivedBytes / expectedSize) * 100, 99) : 0;
+              const bytesPerSecond = (receivedBytes - lastReceivedBytes) / ((now - lastProgressUpdate) / 1000);
+              const speed = formatFileSize(bytesPerSecond) + '/s';
+              const remainingBytes = expectedSize ? expectedSize - receivedBytes : 0;
+              const eta = bytesPerSecond > 0 ? Math.ceil(remainingBytes / bytesPerSecond) : 0;
+              const etaFormatted = eta > 0 ? `${Math.floor(eta / 60)}m ${eta % 60}s` : 'Calculating...';
+
+              updateDownloadProgress(downloadId, {
+                progress: progress,
+                status: 'downloading',
+                speed: speed,
+                eta: etaFormatted,
+                fileSize: expectedSize ? formatFileSize(expectedSize) : formatFileSize(receivedBytes)
+              });
+
+              lastProgressUpdate = now;
+              lastReceivedBytes = receivedBytes;
+            }
           });
 
           downloadStream.on('end', () => {
+            // Mark download as completed
+            updateDownloadProgress(downloadId, {
+              progress: 100,
+              status: 'completed',
+              speed: '0 KB/s',
+              eta: 'Complete',
+              fileSize: formatFileSize(receivedBytes)
+            });
+
+            // Clean up tracking after 5 minutes
+            setTimeout(() => {
+              removeDownloadTracking(downloadId);
+            }, 5 * 60 * 1000);
+
             if (expectedSize && receivedBytes < expectedSize * 0.9) {
               console.error(`⚠️ Download may be incomplete: received ${receivedBytes} bytes, expected ${expectedSize} bytes`);
             } else {
@@ -1910,5 +1964,57 @@ function detectPlatform(url) {
 function generateShareId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
+
+// Real-time download status tracking
+const activeDownloads = new Map(); // Store active download progress
+
+// Endpoint to get download status
+router.post('/status', async (req, res) => {
+  try {
+    const { downloadId, url, format, quality } = req.body;
+
+    if (!downloadId) {
+      return res.status(400).json({ error: 'Download ID is required' });
+    }
+
+    // Check if download is in progress
+    const downloadStatus = activeDownloads.get(downloadId);
+
+    if (downloadStatus) {
+      return res.json(downloadStatus);
+    }
+
+    // If download not found, assume it's completed or failed
+    return res.json({
+      progress: 100,
+      status: 'completed',
+      speed: '0 KB/s',
+      eta: 'Complete',
+      fileSize: 'Download ready'
+    });
+  } catch (error) {
+    console.error('Download status error:', error);
+    res.status(500).json({ error: 'Failed to get download status' });
+  }
+});
+
+// Update download progress (internal function)
+function updateDownloadProgress(downloadId, progressData) {
+  activeDownloads.set(downloadId, {
+    ...activeDownloads.get(downloadId),
+    ...progressData,
+    lastUpdated: new Date().toISOString()
+  });
+}
+
+// Remove completed download from tracking
+function removeDownloadTracking(downloadId) {
+  activeDownloads.delete(downloadId);
+}
+
+// Export functions for use in other routes
+router.updateDownloadProgress = updateDownloadProgress;
+router.removeDownloadTracking = removeDownloadTracking;
+router.activeDownloads = activeDownloads;
 
 module.exports = router;

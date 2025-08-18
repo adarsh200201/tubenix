@@ -192,13 +192,17 @@ const MainDownloader = () => {
     // Open ads and navigate to live downloads page
     window.open('https://www.profitableratecpm.com/s738fegejz?key=12ac1ed2eeb4ac73b7d41add24630c1e', '_blank');
 
+    // Store download ID for tracking
+    let downloadId = null;
+
     // Navigate to live downloads page with video data
     navigate('/live-downloads', {
       state: {
         videoData: videoData,
         videoUrl: url,
         format: format,
-        downloadStarted: true
+        downloadStarted: true,
+        downloadId: downloadId // Will be updated after download request
       }
     });
 
@@ -229,6 +233,21 @@ const MainDownloader = () => {
         console.log(`🎯 Download request - Format: ${format.container}, Quality: ${cleanQuality}, Original: ${format.quality_label || format.resolution}, Height: ${format.height}`);
 
         const result = await downloadVideo(url, format.container.toLowerCase(), cleanQuality);
+
+        // Update the navigation state with the actual download ID
+        if (result.downloadId) {
+          // Re-navigate with the real download ID
+          navigate('/live-downloads', {
+            state: {
+              videoData: videoData,
+              videoUrl: url,
+              format: format,
+              downloadStarted: true,
+              downloadId: result.downloadId
+            }
+          });
+        }
+
         if (result.success) {
           if (result.downloadType === 'adaptive_streams') {
             // Handle YouTube adaptive streaming response

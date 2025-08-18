@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FaDownload, FaCheck, FaSpinner, FaExclamationCircle, FaArrowLeft, FaEye } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import Header from '../components/Header';
+import { getDownloadStatus } from '../services/api';
 
 const LiveDownloads = () => {
   const location = useLocation();
@@ -14,38 +15,77 @@ const LiveDownloads = () => {
   const videoData = location.state?.videoData;
   const videoUrl = location.state?.videoUrl;
 
-  // Simulate real-time download progress
-  const simulateDownloadProgress = useCallback((downloadId) => {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15; // Random progress increment
+  // Track real download progress via API polling
+  const trackRealDownloadProgress = useCallback(async (downloadId, videoUrl, format) => {
+    let attempts = 0;
+    const maxAttempts = 120; // 2 minutes max polling
 
-      setDownloads(prev => prev.map(download => {
-        if (download.id === downloadId) {
-          if (progress >= 100) {
-            clearInterval(interval);
+    const pollProgress = async () => {
+      try {
+        // Poll the backend for real download status using API function
+        const statusData = await getDownloadStatus(
+          downloadId,
+          videoUrl,
+          format?.container || 'mp4',
+          format?.quality_label || 'best'
+        );
+
+        setDownloads(prev => prev.map(download => {
+          if (download.id === downloadId) {
+            return {
+              ...download,
+              progress: statusData.progress || 0,
+              status: statusData.status || 'downloading',
+              speed: statusData.speed || 'Calculating...',
+              eta: statusData.eta || 'Calculating...',
+              fileSize: statusData.fileSize || 'Unknown',
+              realTime: true
+            };
+          }
+          return download;
+        }));
+
+        // Continue polling if still downloading
+        if (statusData.status === 'downloading' && attempts < maxAttempts) {
+          attempts++;
+          setTimeout(pollProgress, 1000); // Poll every second
+        } else if (statusData.status === 'completed') {
+          // Download completed
+          setDownloads(prev => prev.map(download => {
+            if (download.id === downloadId) {
+              return {
+                ...download,
+                progress: 100,
+                status: 'completed',
+                speed: '0 KB/s',
+                eta: 'Complete',
+                downloadUrl: statusData.downloadUrl
+              };
+            }
+            return download;
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to poll download status:', error);
+        // Fallback for network errors - mark as completed
+        setDownloads(prev => prev.map(download => {
+          if (download.id === downloadId) {
             return {
               ...download,
               progress: 100,
               status: 'completed',
               speed: '0 KB/s',
               eta: 'Complete',
-              fileSize: getRandomFileSize()
+              fileSize: 'Download ready'
             };
           }
+          return download;
+        }));
+      }
+    };
 
-          return {
-            ...download,
-            progress: Math.min(progress, 99),
-            status: 'downloading',
-            speed: getRandomSpeed(),
-            eta: getRandomETA(progress),
-            fileSize: progress > 20 ? getRandomFileSize() : 'Calculating...'
-          };
-        }
-        return download;
-      }));
-    }, 800); // Update every 800ms for realistic feel
+    // Start polling
+    pollProgress();
   }, []);
 
   useEffect(() => {
@@ -58,8 +98,11 @@ const LiveDownloads = () => {
 
     // Initialize download if video data is provided
     if (videoData && videoUrl) {
+      // Use download ID from navigation state if available, otherwise generate one
+      const downloadId = location.state?.downloadId || Date.now();
+
       const initialDownload = {
-        id: Date.now(),
+        id: downloadId,
         title: videoData.title || 'Unknown Video',
         url: videoUrl,
         platform: videoData.platform || 'Unknown',
@@ -71,30 +114,15 @@ const LiveDownloads = () => {
         startTime: new Date().toLocaleTimeString(),
         thumbnail: videoData.thumbnail || '/api/placeholder/150/100'
       };
-      
+
       setDownloads([initialDownload]);
-      simulateDownloadProgress(initialDownload.id);
+
+      // Start real download tracking
+      const format = location.state?.format;
+      trackRealDownloadProgress(downloadId, videoUrl, format);
     }
-  }, [videoData, videoUrl, adsShown, simulateDownloadProgress]);
+  }, [videoData, videoUrl, adsShown, trackRealDownloadProgress, location.state]);
 
-  // Helper functions for realistic data
-  const getRandomSpeed = () => {
-    const speeds = ['1.2 MB/s', '850 KB/s', '2.1 MB/s', '1.8 MB/s', '950 KB/s', '1.5 MB/s'];
-    return speeds[Math.floor(Math.random() * speeds.length)];
-  };
-
-  const getRandomETA = (progress) => {
-    if (progress < 20) return 'Calculating...';
-    const remaining = 100 - progress;
-    const minutes = Math.floor(remaining / 20);
-    const seconds = Math.floor((remaining % 20) * 3);
-    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  };
-
-  const getRandomFileSize = () => {
-    const sizes = ['156.8 MB', '89.2 MB', '234.5 MB', '45.7 MB', '178.3 MB', '67.9 MB'];
-    return sizes[Math.floor(Math.random() * sizes.length)];
-  };
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -207,13 +235,19 @@ const LiveDownloads = () => {
                                 {download.title}
                               </h3>
                               <div className="flex items-center space-x-4 text-sm text-gray-600">
-                                <span className="flex items-center space-x-1">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                  <span>{download.platform}</span>
+                              <span className="flex items-center space-x-1">
+                                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                <span>{download.platform}</span>
+                              </span>
+                              <span>Started: {download.startTime}</span>
+                              <span>Size: {download.fileSize}</span>
+                              {download.realTime && (
+                                <span className="flex items-center space-x-1 text-green-600">
+                                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                  <span>Live Tracking</span>
                                 </span>
-                                <span>Started: {download.startTime}</span>
-                                <span>Size: {download.fileSize}</span>
-                              </div>
+                              )}
+                            </div>
                             </div>
                             <div className="flex items-center space-x-3">
                               <span className={`px-3 py-1 text-xs font-bold rounded-full ${getStatusColor(download.status)}`}>
