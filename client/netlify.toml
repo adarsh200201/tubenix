@@ -12,12 +12,12 @@
   to = "/index.html"
   status = 200
 
-# API proxy for development (if needed)
+# API proxy to production backend
 [[redirects]]
   from = "/api/*"
   to = "https://tubenix.onrender.com/api/:splat"
   status = 200
-  force = false
+  force = true
 
 # CORS headers
 [[headers]]
@@ -28,10 +28,11 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Headers for API calls
+# Production headers for API calls
 [[headers]]
   for = "/api/*"
   [headers.values]
-    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Origin = "https://tubenix.netlify.app"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With"
+    Cache-Control = "no-cache"

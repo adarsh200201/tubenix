@@ -70,13 +70,11 @@ const ConnectionStatus = () => {
           <p><strong>Suggestion:</strong> {status.suggestion}</p>
         </div>
         <div className="mt-3 text-xs bg-red-100 p-2 rounded">
-          <strong>For developers:</strong>
+          <strong>Service Status:</strong>
           <br />
-          • Make sure the backend is deployed on Render
+          The service is temporarily unavailable. Please try again in a few minutes.
           <br />
-          • Check if https://tubenix.onrender.com/api/health responds
-          <br />
-          • Verify CORS settings allow Netlify domain
+          If the problem persists, the backend service may be restarting.
         </div>
       </div>
     </div>

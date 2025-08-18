@@ -1,31 +1,11 @@
 import axios from 'axios';
 
-// Determine API base URL based on environment and deployment
-const getApiBaseUrl = () => {
-  // If we're in development
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:5000/api';
-  }
+// Production API base URL - no fallbacks, single source of truth
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:5000/api'
+  : 'https://tubenix.onrender.com/api';
 
-  // If we're on Netlify (production frontend)
-  if (window.location.hostname.includes('netlify.app') ||
-      window.location.hostname.includes('tubenix.netlify.app')) {
-    return 'https://tubenix.onrender.com/api';
-  }
-
-  // If we're on Render (full-stack deployment)
-  if (window.location.hostname.includes('onrender.com')) {
-    return '/api'; // Use relative URL for same-origin requests
-  }
-
-  // Default to Render backend for production
-  return 'https://tubenix.onrender.com/api';
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
-console.log('🔗 Using API base URL:', API_BASE_URL);
-console.log('🌐 Current hostname:', window.location.hostname);
+console.log('🔗 API Base URL:', API_BASE_URL);
 console.log('🚀 Environment:', process.env.NODE_ENV);
 
 const api = axios.create({

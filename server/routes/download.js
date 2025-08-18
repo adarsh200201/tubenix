@@ -566,10 +566,29 @@ router.post('/metadata', async (req, res) => {
 
         // Process all available formats
         info.formats.forEach((format, index) => {
-          const fileSize = format.contentLength ? {
-            bytes: parseInt(format.contentLength),
-            human: formatFileSize(parseInt(format.contentLength))
-          } : null;
+          let fileSize = null;
+
+          if (format.contentLength) {
+            // Use actual content length if available
+            fileSize = {
+              bytes: parseInt(format.contentLength),
+              human: formatFileSize(parseInt(format.contentLength))
+            };
+          } else if (format.bitrate && videoDetails.lengthSeconds) {
+            // Estimate file size based on bitrate and duration
+            const estimatedBytes = Math.round((format.bitrate * parseInt(videoDetails.lengthSeconds)) / 8);
+            fileSize = {
+              bytes: estimatedBytes,
+              human: formatFileSize(estimatedBytes) + ' (est.)'
+            };
+          } else if (format.audioBitrate && videoDetails.lengthSeconds && !format.hasVideo) {
+            // Estimate audio file size
+            const estimatedBytes = Math.round((format.audioBitrate * parseInt(videoDetails.lengthSeconds)) / 8);
+            fileSize = {
+              bytes: estimatedBytes,
+              human: formatFileSize(estimatedBytes) + ' (est.)'
+            };
+          }
           const isAdaptive = !format.hasVideo || !format.hasAudio;
 
           const downloadOption = {
@@ -587,7 +606,7 @@ router.post('/metadata', async (req, res) => {
             audio_sample_rate: format.audioSampleRate || null,
             duration_seconds: parseInt(videoDetails.lengthSeconds),
             approx_file_size_bytes: fileSize?.bytes || null,
-            approx_human_size: fileSize?.human || '-',
+            approx_human_size: fileSize?.human || 'Size unknown',
             is_adaptive: isAdaptive,
             requires_muxing: isAdaptive,
             direct_url: format.url,
@@ -654,7 +673,7 @@ router.post('/metadata', async (req, res) => {
         // Debug logging for quality categories
         console.log(`📊 Quality breakdown:`);
         console.log(`  🎆 8K/4K+ formats (2160p+): ${uhd4kFormats.length}`);
-        console.log(`  ���� 2K formats (1440p): ${qhd2kFormats.length}`);
+        console.log(`  ����� 2K formats (1440p): ${qhd2kFormats.length}`);
         console.log(`  ✨ FHD formats (1080p): ${fhdFormats.length}`);
         console.log(`  �� HD formats (720p): ${hdFormats.length}`);
         console.log(`  ���� Total all formats: ${allFormats.length}`);
@@ -895,19 +914,20 @@ router.post('/metadata', async (req, res) => {
             }
 
             // Use real formats if available, otherwise use intelligent fallback WITH real download capability
+            const fallbackDuration = 180; // Default 3 minutes
             const simulatedFormats = realFormats.length > 0 ? realFormats : [
               // Add 8K support with progressive formats (video + audio) - these work best with fallback downloads
-              { height: 4320, container: 'webm', type: 'video-progressive', quality_label: '8K (4320p)', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 45000 },
-              { height: 2160, container: 'webm', type: 'video-progressive', quality_label: '4K (2160p)', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 20000 },
-              { height: 1440, container: 'webm', type: 'video-progressive', quality_label: '2K (1440p)', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 12000 },
-              { height: 1080, container: 'webm', type: 'video-progressive', quality_label: '1080p', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 8000 },
-              { height: 720, container: 'mp4', type: 'video-progressive', quality_label: '720p', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 4000 },
-              { height: 480, container: 'mp4', type: 'video-progressive', quality_label: '480p', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 2000 },
-              { height: 360, container: 'mp4', type: 'video-progressive', quality_label: '360p', hasVideo: true, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 1000 },
+              { height: 4320, container: 'webm', type: 'video-progressive', quality_label: '8K (4320p)', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((45000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 45000 },
+              { height: 2160, container: 'webm', type: 'video-progressive', quality_label: '4K (2160p)', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((20000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 20000 },
+              { height: 1440, container: 'webm', type: 'video-progressive', quality_label: '2K (1440p)', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((12000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 12000 },
+              { height: 1080, container: 'webm', type: 'video-progressive', quality_label: '1080p', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((8000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 8000 },
+              { height: 720, container: 'mp4', type: 'video-progressive', quality_label: '720p', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((4000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 4000 },
+              { height: 480, container: 'mp4', type: 'video-progressive', quality_label: '480p', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((2000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 2000 },
+              { height: 360, container: 'mp4', type: 'video-progressive', quality_label: '360p', hasVideo: true, hasAudio: true, approx_human_size: formatFileSize(Math.round((1000 * fallbackDuration) / 8)) + ' (est.)', bitrate: 1000 },
               // Audio formats with real download capability
-              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 320kbps', hasVideo: false, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 320 },
-              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 256kbps', hasVideo: false, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 256 },
-              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 128kbps', hasVideo: false, hasAudio: true, approx_human_size: 'Calculating...', bitrate: 128 }
+              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 320kbps', hasVideo: false, hasAudio: true, approx_human_size: formatFileSize(Math.round((320 * fallbackDuration) / 8)) + ' (est.)', bitrate: 320 },
+              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 256kbps', hasVideo: false, hasAudio: true, approx_human_size: formatFileSize(Math.round((256 * fallbackDuration) / 8)) + ' (est.)', bitrate: 256 },
+              { container: 'm4a', type: 'audio-only', quality_label: 'Audio 128kbps', hasVideo: false, hasAudio: true, approx_human_size: formatFileSize(Math.round((128 * fallbackDuration) / 8)) + ' (est.)', bitrate: 128 }
             ];
 
             const processedFormats = simulatedFormats.map((format, index) => ({
@@ -920,7 +940,7 @@ router.post('/metadata', async (req, res) => {
               height: format.height || null,
               frame_rate: format.height >= 2160 ? 60 : 30, // Higher FPS for 4K+ content
               bitrate: format.bitrate,
-              duration_seconds: 180, // Will be updated with real duration
+              duration_seconds: fallbackDuration, // Fallback duration for file size estimation
               approx_file_size_bytes: format.realFileSize || null,
               approx_human_size: format.approx_human_size,
               is_adaptive: format.type !== 'video-progressive',
@@ -954,7 +974,7 @@ router.post('/metadata', async (req, res) => {
               like_count: null,
               description: 'Video ready for download using advanced extraction method. All quality options are fully functional.',
               thumbnail: '/api/placeholder/300/200',
-              duration: 180,
+              duration: fallbackDuration,
               duration_formatted: '3:00',
               platform: platform,
               url: url,
@@ -1458,7 +1478,7 @@ router.post('/video', async (req, res) => {
             });
           } catch (formatError) {
             console.log('❌ Specific format not available, trying fallback...');
-            console.log('���� Available formats:', info.formats.length);
+            console.log('������ Available formats:', info.formats.length);
 
             // Fallback to any available format
             try {
@@ -1766,37 +1786,49 @@ router.post('/video', async (req, res) => {
 
         } catch (error) {
           console.error('❌ ytdl-core download failed:', error.message);
+          console.log('🔄 Attempting advanced YouTube extraction methods...');
 
-          // 9xbuddy-style simple response
-          console.log('🔥 Using 9xbuddy-style download response...');
+          try {
+            // Use real YouTube downloader for production-grade extraction
+            const youtubeDownloader = new YouTubeDownloader();
+            const extractionResult = await youtubeDownloader.extractRealDownloadUrls(url);
 
-          const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1] || 'unknown';
-          const isAudioFormat = quality.includes('kbps') || quality.includes('mp3') || quality.includes('audio');
+            if (extractionResult.success && extractionResult.formats && extractionResult.formats.length > 0) {
+              console.log('✅ Advanced extraction successful, providing direct download URL');
 
-          return res.json({
-            success: false,
-            message: `YouTube download for ${quality} quality is temporarily blocked.`,
-            suggestion: 'Try using browser extensions or third-party downloaders.',
-            downloadType: 'manual',
-            instructions: [
-              '1. Copy the video URL: ' + url,
-              '2. Use a browser extension like "Video DownloadHelper"',
-              '3. Or try online converters like 9xbuddy.com',
-              '4. Or use yt-dlp command line tool'
-            ],
-            videoInfo: {
-              videoId: videoId,
-              requestedQuality: quality,
-              format: format,
-              isAudio: isAudioFormat
-            },
-            note: 'YouTube has stronger anti-bot measures. Manual methods work better.'
-          });
+              // Find the best matching format for requested quality
+              const requestedQuality = quality === 'best' ? '1080p' : quality;
+              let selectedFormat = extractionResult.formats.find(f =>
+                f.quality_label === requestedQuality && f.container === format
+              );
 
-          // Determine appropriate status code and message based on error type
+              // Fallback to any available format if exact match not found
+              if (!selectedFormat && extractionResult.formats.length > 0) {
+                selectedFormat = extractionResult.formats[0];
+              }
+
+              if (selectedFormat && selectedFormat.url) {
+                // Return direct download URL for client to handle
+                return res.json({
+                  success: true,
+                  downloadUrl: selectedFormat.url,
+                  filename: `${extractionResult.title || 'video'}.${selectedFormat.container}`,
+                  quality: selectedFormat.quality_label,
+                  fileSize: selectedFormat.filesize,
+                  message: 'Direct download URL extracted successfully'
+                });
+              }
+            }
+
+            console.log('❌ Advanced extraction failed, no downloadable formats found');
+          } catch (advancedError) {
+            console.error('❌ Advanced extraction failed:', advancedError.message);
+          }
+
+          // All methods failed, provide error response with production-grade messaging
           let statusCode = 503;
           let errorMessage = 'YouTube download temporarily unavailable';
-          let suggestion = 'Please try the Extract Links feature or try a different quality.';
+          let suggestion = 'Video may be protected or unavailable. Please try again later.';
 
           if (error.message.includes('Video unavailable')) {
             statusCode = 404;
@@ -1805,7 +1837,7 @@ router.post('/video', async (req, res) => {
           } else if (error.message.includes('timeout') || error.code === 'ETIMEDOUT') {
             statusCode = 408;
             errorMessage = 'Download request timed out';
-            suggestion = 'YouTube may be blocking requests. Please try again later or use Extract Links.';
+            suggestion = 'Service is busy. Please try again in a few moments.';
           } else if (error.message.includes('No suitable format')) {
             statusCode = 422;
             errorMessage = 'Requested quality not available';
@@ -1816,13 +1848,11 @@ router.post('/video', async (req, res) => {
             suggestion = 'This video cannot be downloaded as it is private.';
           }
 
-          // Provide helpful error response
           return res.status(statusCode).json({
+            success: false,
             error: errorMessage,
-            details: error.message,
-            suggestedAction: suggestion,
-            fallbackAction: statusCode === 503 ? 'extract_links' : null,
-            note: statusCode === 503 ? 'YouTube frequently updates their protection. Extract Links may work better for some videos.' : null
+            details: process.env.NODE_ENV === 'development' ? error.message : 'Video extraction failed',
+            suggestion: suggestion
           });
         }
 

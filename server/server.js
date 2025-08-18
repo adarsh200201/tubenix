@@ -28,24 +28,27 @@ if (process.env.MONGODB_URI) {
 // Middleware
 app.set('trust proxy', 1); // Trust first proxy for rate limiting
 
+// Production-ready CORS configuration
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      'https://tubenix.onrender.com',
+      'https://tubenix.netlify.app',
+      'https://main--tubenix.netlify.app',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean)
+  : [
+      'http://localhost:3000',
+      'http://localhost:4000',
+      'http://localhost:5000',
+      'http://localhost:48752',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:4000',
+      'http://127.0.0.1:5000',
+      'http://127.0.0.1:48752'
+    ];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:4000',
-    'http://localhost:5000',
-    'http://localhost:48752', // Additional dev environment port
-    'https://tubenix.onrender.com', // Production domain
-    'https://tubenix.netlify.app', // Netlify frontend
-    'https://tubenix-frontend.netlify.app', // Alternative Netlify domain
-    'https://main--tubenix.netlify.app', // Netlify branch preview
-    'https://deploy-preview-*--tubenix.netlify.app', // Netlify deploy previews
-    process.env.CORS_ORIGIN,
-    // Development environment variations
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:4000',
-    'http://127.0.0.1:5000',
-    'http://127.0.0.1:48752'
-  ].filter(Boolean),
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']

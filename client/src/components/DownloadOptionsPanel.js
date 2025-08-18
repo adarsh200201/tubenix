@@ -309,7 +309,13 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-semibold text-gray-700">
-                        {format.approx_human_size || 'Calculating...'}
+                        {format.approx_human_size === 'Size unknown' ? (
+                          <span className="text-gray-500 italic">Size unknown</span>
+                        ) : format.approx_human_size === '-' ? (
+                          <span className="text-gray-500 italic">Not available</span>
+                        ) : format.approx_human_size || (
+                          <span className="text-blue-600 animate-pulse">Calculating...</span>
+                        )}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
