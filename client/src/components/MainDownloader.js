@@ -312,8 +312,8 @@ const MainDownloader = () => {
         errorMessage = 'Download timeout - the video is taking too long to process';
         suggestion = 'Try downloading a lower quality (720p or 480p) or use Extract Links feature. Large files (4K/2K) may take several minutes.';
       } else if (error.response?.status === 503) {
-        errorMessage = 'Service temporarily unavailable';
-        suggestion = 'YouTube may be blocking requests. Try again in a few minutes or use Extract Links.';
+        errorMessage = 'Backend service temporarily unavailable';
+        suggestion = 'This could be due to: YouTube blocking, server overload, or backend deployment issues. Try Extract Links feature or wait a few minutes.';
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else if (error.message) {

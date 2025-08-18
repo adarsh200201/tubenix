@@ -15,59 +15,76 @@ const LiveDownloads = () => {
   const videoData = location.state?.videoData;
   const videoUrl = location.state?.videoUrl;
 
-  // Track real download progress via API polling
-  const trackRealDownloadProgress = useCallback(async (downloadId, videoUrl, format) => {
+  // Track download progress with fallback for production
+  const trackDownloadProgress = useCallback(async (downloadId, videoUrl, format) => {
     let attempts = 0;
-    const maxAttempts = 120; // 2 minutes max polling
+    const maxAttempts = 30; // Reduced attempts since we're doing fallback
+    let fallbackMode = false;
 
     const pollProgress = async () => {
       try {
-        // Poll the backend for real download status using API function
-        const statusData = await getDownloadStatus(
-          downloadId,
-          videoUrl,
-          format?.container || 'mp4',
-          format?.quality_label || 'best'
-        );
+        // Try to poll the backend for real download status
+        if (!fallbackMode) {
+          const statusData = await getDownloadStatus(
+            downloadId,
+            videoUrl,
+            format?.container || 'mp4',
+            format?.quality_label || 'best'
+          );
 
-        setDownloads(prev => prev.map(download => {
-          if (download.id === downloadId) {
-            return {
-              ...download,
-              progress: statusData.progress || 0,
-              status: statusData.status || 'downloading',
-              speed: statusData.speed || 'Calculating...',
-              eta: statusData.eta || 'Calculating...',
-              fileSize: statusData.fileSize || 'Unknown',
-              realTime: true
-            };
-          }
-          return download;
-        }));
-
-        // Continue polling if still downloading
-        if (statusData.status === 'downloading' && attempts < maxAttempts) {
-          attempts++;
-          setTimeout(pollProgress, 1000); // Poll every second
-        } else if (statusData.status === 'completed') {
-          // Download completed
+          // If successful, update with real data
           setDownloads(prev => prev.map(download => {
             if (download.id === downloadId) {
               return {
                 ...download,
-                progress: 100,
-                status: 'completed',
-                speed: '0 KB/s',
-                eta: 'Complete',
-                downloadUrl: statusData.downloadUrl
+                progress: statusData.progress || 0,
+                status: statusData.status || 'downloading',
+                speed: statusData.speed || 'Calculating...',
+                eta: statusData.eta || 'Calculating...',
+                fileSize: statusData.fileSize || 'Unknown',
+                realTime: true
               };
             }
             return download;
           }));
+
+          // Continue polling if still downloading
+          if (statusData.status === 'downloading' && attempts < maxAttempts) {
+            attempts++;
+            setTimeout(pollProgress, 2000); // Poll every 2 seconds
+          } else if (statusData.status === 'completed') {
+            // Download completed
+            setDownloads(prev => prev.map(download => {
+              if (download.id === downloadId) {
+                return {
+                  ...download,
+                  progress: 100,
+                  status: 'completed',
+                  speed: '0 KB/s',
+                  eta: 'Complete',
+                  downloadUrl: statusData.downloadUrl
+                };
+              }
+              return download;
+            }));
+          }
         }
       } catch (error) {
-        console.error('Failed to poll download status:', error);
-        // Fallback for network errors - mark as completed
+        console.warn('Real-time tracking not available, using fallback mode:', error.message);
+
+        // Switch to fallback mode - simulate realistic progress
+        if (!fallbackMode && (error.message.includes('Not Found') || error.message.includes('404'))) {
+          fallbackMode = true;
+          console.log('🔄 Production backend missing real-time endpoint, using fallback progress simulation...');
+          toast('📊 Using simulated progress (real-time tracking will be available after backend update)', {
+            duration: 4000,
+            icon: '📊'
+          });
+          simulateFallbackProgress(downloadId);
+          return;
+        }
+
+        // Other errors - mark as completed
         setDownloads(prev => prev.map(download => {
           if (download.id === downloadId) {
             return {
@@ -84,7 +101,44 @@ const LiveDownloads = () => {
       }
     };
 
-    // Start polling
+    // Fallback simulation for when real-time tracking isn't available
+    const simulateFallbackProgress = (downloadId) => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 10 + 5; // 5-15% increments
+
+        setDownloads(prev => prev.map(download => {
+          if (download.id === downloadId) {
+            if (progress >= 100) {
+              clearInterval(interval);
+              return {
+                ...download,
+                progress: 100,
+                status: 'completed',
+                speed: '0 KB/s',
+                eta: 'Complete',
+                fileSize: 'Download ready',
+                realTime: false
+              };
+            }
+
+            const remainingTime = Math.max(1, Math.ceil((100 - progress) / 10));
+            return {
+              ...download,
+              progress: Math.min(progress, 99),
+              status: 'downloading',
+              speed: '1.2 MB/s',
+              eta: `${remainingTime}s`,
+              fileSize: 'Calculating...',
+              realTime: false
+            };
+          }
+          return download;
+        }));
+      }, 1500); // Update every 1.5 seconds
+    };
+
+    // Start with real-time tracking attempt
     pollProgress();
   }, []);
 
@@ -117,11 +171,11 @@ const LiveDownloads = () => {
 
       setDownloads([initialDownload]);
 
-      // Start real download tracking
+      // Start download tracking (real-time with fallback)
       const format = location.state?.format;
-      trackRealDownloadProgress(downloadId, videoUrl, format);
+      trackDownloadProgress(downloadId, videoUrl, format);
     }
-  }, [videoData, videoUrl, adsShown, trackRealDownloadProgress, location.state]);
+  }, [videoData, videoUrl, adsShown, trackDownloadProgress, location.state]);
 
 
   const getStatusIcon = (status) => {
@@ -241,10 +295,16 @@ const LiveDownloads = () => {
                               </span>
                               <span>Started: {download.startTime}</span>
                               <span>Size: {download.fileSize}</span>
-                              {download.realTime && (
+                              {download.realTime === true && (
                                 <span className="flex items-center space-x-1 text-green-600">
                                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                                   <span>Live Tracking</span>
+                                </span>
+                              )}
+                              {download.realTime === false && (
+                                <span className="flex items-center space-x-1 text-blue-600">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                                  <span>Simulated Progress</span>
                                 </span>
                               )}
                             </div>

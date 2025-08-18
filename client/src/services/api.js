@@ -95,7 +95,8 @@ api.interceptors.response.use(
       } else if (errorData?.details) {
         serviceUnavailableMessage = `Service temporarily unavailable: ${errorData.details}`;
       } else {
-        serviceUnavailableMessage = 'Service temporarily unavailable. This may be due to YouTube blocking or server overload. Please try the Extract Links feature or try again later.';
+        // Enhanced message for production backend issues
+        serviceUnavailableMessage = 'Backend service temporarily unavailable. This could be due to:\n• YouTube anti-bot measures\n• Server overload on Render\n• Backend deployment issues\n\nSuggestions:\n• Try again in a few minutes\n• Use Extract Links feature\n• Try a different video quality';
       }
 
       return Promise.reject(new Error(serviceUnavailableMessage));
@@ -543,13 +544,37 @@ export const getDownloadStatus = async (downloadId, url, format, quality) => {
     return response.data;
   } catch (error) {
     console.error('❌ Failed to get download status:', error.message);
-    // Return fallback status instead of throwing
+
+    // If 404, the endpoint doesn't exist in production yet
+    if (error.message.includes('404') || error.message.includes('Not Found')) {
+      throw new Error('Real-time tracking endpoint not available in production backend');
+    }
+
+    // Return fallback status for other errors
     return {
       progress: 100,
       status: 'completed',
       speed: '0 KB/s',
       eta: 'Complete',
       fileSize: 'Download ready'
+    };
+  }
+};
+
+// Check if production backend is responding
+export const checkBackendHealth = async () => {
+  try {
+    const healthData = await healthCheck();
+    return {
+      healthy: true,
+      message: 'Backend is responding normally',
+      data: healthData
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      message: error.message,
+      suggestion: 'Backend may be down or experiencing issues. Please try again later.'
     };
   }
 };
