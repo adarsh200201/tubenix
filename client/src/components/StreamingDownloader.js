@@ -8,7 +8,6 @@ import {
   FaCheckCircle
 } from 'react-icons/fa';
 import { detectPlatform, downloadVideo } from '../services/api';
-import axios from 'axios';
 
 // API base URL configuration
 const API_BASE_URL = process.env.NODE_ENV === 'development'
