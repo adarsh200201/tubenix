@@ -8,6 +8,11 @@ import {
   FaExclamationTriangle
 } from 'react-icons/fa';
 
+// API base URL configuration
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:5000/api'
+  : 'https://tubenix.onrender.com/api';
+
 const BatchDownloader = () => {
   const [urls, setUrls] = useState(['']);
   const [quality, setQuality] = useState('1080');
@@ -54,7 +59,7 @@ const BatchDownloader = () => {
         toast(`Processing ${i + 1}/${validUrls.length}: ${url}`, { duration: 2000 });
         
         try {
-          const response = await fetch('/api/download/video', {
+          const response = await fetch(`${API_BASE_URL}/download/video`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -7,7 +7,13 @@ import {
   FaMusic,
   FaCheckCircle
 } from 'react-icons/fa';
-import { detectPlatform } from '../services/api';
+import { detectPlatform, downloadVideo } from '../services/api';
+import axios from 'axios';
+
+// API base URL configuration
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:5000/api'
+  : 'https://tubenix.onrender.com/api';
 
 const StreamingDownloader = ({ videoData, url }) => {
   const [isDownloading, setIsDownloading] = useState(false);
@@ -25,7 +31,7 @@ const StreamingDownloader = ({ videoData, url }) => {
 
     setLoadingFormats(true);
     try {
-      const response = await fetch(`/api/streaming/formats?url=${encodeURIComponent(url)}`);
+      const response = await fetch(`${API_BASE_URL}/streaming/formats?url=${encodeURIComponent(url)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.formats && data.formats.length > 0) {
@@ -67,55 +73,30 @@ const StreamingDownloader = ({ videoData, url }) => {
     setDownloadProgress(0);
     
     try {
-      // Start streaming download
-      const response = await fetch('/api/streaming/download', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          quality: selectedQuality,
-          format: 'video'
-        }),
-      });
+      // Use the standard downloadVideo function
+      const result = await downloadVideo(url, 'mp4', selectedQuality);
 
-      if (response.ok) {
-        const result = await response.json();
-        
-        if (result.success) {
-          // Simulate progress for user feedback
-          const progressInterval = setInterval(() => {
-            setDownloadProgress(prev => {
-              if (prev >= 90) {
-                clearInterval(progressInterval);
-                return 90;
-              }
-              return prev + Math.random() * 10;
-            });
-          }, 500);
+      if (result) {
+        // Simulate progress for user feedback
+        const progressInterval = setInterval(() => {
+          setDownloadProgress(prev => {
+            if (prev >= 90) {
+              clearInterval(progressInterval);
+              return 90;
+            }
+            return prev + Math.random() * 10;
+          });
+        }, 500);
 
-          // Start actual download
-          const downloadUrl = result.downloadUrl || `/api/streaming/download?url=${encodeURIComponent(url)}&quality=${selectedQuality}&format=video`;
-          const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.download = result.filename || `video_${selectedQuality}.mp4`;
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-
-          // Complete progress
-          setTimeout(() => {
-            clearInterval(progressInterval);
-            setDownloadProgress(100);
-            toast.success('Streaming download started successfully!');
-            setTimeout(() => setIsDownloading(false), 2000);
-          }, 2000);
-        } else {
-          throw new Error(result.message || 'Streaming download failed');
-        }
+        // Complete progress
+        setTimeout(() => {
+          clearInterval(progressInterval);
+          setDownloadProgress(100);
+          toast.success('🎉 Download completed!', { duration: 3000 });
+          setIsDownloading(false);
+        }, 2000);
       } else {
-        throw new Error('Failed to start streaming download');
+        throw new Error('Download failed');
       }
     } catch (error) {
       console.error('❌ Streaming download error:', error);
