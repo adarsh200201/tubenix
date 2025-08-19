@@ -36,41 +36,63 @@ class StreamingDownloader {
         throw new Error('Invalid YouTube URL format. Please provide a valid YouTube video URL.');
       }
 
-      // Enhanced ytdl-core configuration to handle YouTube changes
+      // Enhanced ytdl-core configuration with improved bot evasion
       const configs = [
-        // Config 1: Standard with latest user agent
+        // Config 1: Latest Chrome with full headers
         {
           requestOptions: {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
               'Accept-Language': 'en-US,en;q=0.9',
-              'Accept': '*/*',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1',
+              'Sec-Fetch-Dest': 'document',
               'Sec-Fetch-Mode': 'navigate',
               'Sec-Fetch-Site': 'none',
               'Sec-Fetch-User': '?1',
-              'Upgrade-Insecure-Requests': '1'
+              'Cache-Control': 'max-age=0',
+              'Referer': 'https://www.youtube.com/'
             }
           },
           lang: 'en',
           format: 'json'
         },
-        // Config 2: Alternative user agent
+        // Config 2: Mobile iOS user agent (often less restricted)
         {
           requestOptions: {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1',
+              'Referer': 'https://www.youtube.com/'
             }
           },
           lang: 'en'
         },
-        // Config 3: Mobile user agent
+        // Config 3: Android mobile user agent
         {
           requestOptions: {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
-              'Accept-Language': 'en-US,en;q=0.9'
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+              'Cache-Control': 'max-age=0',
+              'Referer': 'https://www.youtube.com/'
             }
           },
           lang: 'en'
@@ -82,11 +104,15 @@ class StreamingDownloader {
 
       for (let i = 0; i < configs.length; i++) {
         try {
-          console.log(`Trying configuration ${i + 1}/${configs.length} with ${configs[i].requestOptions.headers['User-Agent'].split(' ')[0]}...`);
+          console.log(`Trying configuration ${i + 1}/${configs.length} with ${configs[i].requestOptions.headers['User-Agent'].substring(0, 30)}...`);
 
-          // Add a small delay between attempts to avoid rate limiting
+          // Add progressive delay with jitter to avoid rate limiting
           if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * i));
+            const baseDelay = 1500 * i; // 1.5s, 3s, 4.5s...
+            const jitter = baseDelay * 0.3 * (Math.random() - 0.5); // ±30% jitter
+            const finalDelay = Math.max(500, baseDelay + jitter);
+            console.log(`⏳ Rate limiting: waiting ${Math.round(finalDelay)}ms before next attempt...`);
+            await new Promise(resolve => setTimeout(resolve, finalDelay));
           }
           info = await ytdl.getInfo(url, configs[i]);
           console.log(`✅ Success with configuration ${i + 1} - Title: ${info.videoDetails.title.substring(0, 50)}...`);
