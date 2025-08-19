@@ -39,18 +39,24 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
   // Helper function to choose the better format between two with same quality
   const chooseBetterFormat = (format1, format2) => {
     // Prefer formats with both video and audio (complete files)
-    if (format1.has_video && format1.has_audio && !(format2.has_video && format2.has_audio)) {
+    const has_both_1 = (format1.has_video || false) && (format1.has_audio || false);
+    const has_both_2 = (format2.has_video || false) && (format2.has_audio || false);
+
+    if (has_both_1 && !has_both_2) {
       return format1;
     }
-    if (format2.has_video && format2.has_audio && !(format1.has_video && format1.has_audio)) {
+    if (has_both_2 && !has_both_1) {
       return format2;
     }
 
     // Prefer formats with known codec over unknown
-    if (format1.codec !== 'unknown' && format2.codec === 'unknown') {
+    const codec1 = format1.codec || 'unknown';
+    const codec2 = format2.codec || 'unknown';
+
+    if (codec1 !== 'unknown' && codec2 === 'unknown') {
       return format1;
     }
-    if (format2.codec !== 'unknown' && format1.codec === 'unknown') {
+    if (codec2 !== 'unknown' && codec1 === 'unknown') {
       return format2;
     }
 
@@ -63,10 +69,13 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
     }
 
     // Prefer mp4 over other containers for compatibility
-    if (format1.container === 'mp4' && format2.container !== 'mp4') {
+    const container1 = format1.container || 'unknown';
+    const container2 = format2.container || 'unknown';
+
+    if (container1 === 'mp4' && container2 !== 'mp4') {
       return format1;
     }
-    if (format2.container === 'mp4' && format1.container !== 'mp4') {
+    if (container2 === 'mp4' && container1 !== 'mp4') {
       return format2;
     }
 
@@ -80,21 +89,21 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
 
     // Remove formats with unknown/invalid data
     filtered = filtered.filter(format => {
-      // Remove formats with unknown codec
+      // Remove formats with unknown codec (but allow undefined codec)
       if (format.codec === 'unknown') return false;
 
-      // Remove formats without valid quality info
+      // Remove formats without valid quality info for video formats
       if (format.type === 'video-progressive' || format.type === 'video-only') {
-        if (!format.height || format.height === 0) return false;
+        if (!format.height || format.height === 0 || format.height === undefined) return false;
         // Remove very low quality formats (below 144p) unless specifically needed
         if (format.height < 144) return false;
       }
 
-      // Remove formats without valid container
-      if (!format.container || format.container === 'unknown') return false;
+      // Remove formats without valid container (but allow undefined container with fallback)
+      if (format.container === 'unknown') return false;
 
-      // Remove audio formats with very low bitrate
-      if (format.type === 'audio-only' && format.bitrate && format.bitrate < 64) return false;
+      // Remove audio formats with very low bitrate (but allow undefined bitrate)
+      if (format.type === 'audio-only' && format.bitrate !== undefined && format.bitrate < 64) return false;
 
       return true;
     });
@@ -104,7 +113,7 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
     filtered.forEach(format => {
       const qualityKey = format.type === 'audio-only'
         ? `audio-${format.bitrate || 128}`
-        : `video-${format.height}`;
+        : `video-${format.height || 'unknown'}`;
 
       const existing = qualityMap.get(qualityKey);
       if (!existing) {
@@ -122,12 +131,12 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
     if (filterType !== 'all') {
       filtered = filtered.filter(format => {
         switch (filterType) {
-          case 'hd': return format.height >= 720;
-          case '8k': return format.height >= 4320;
-          case '4k': return format.height >= 2160;
-          case '2k': return format.height >= 1440;
-          case 'fhd': return format.height >= 1080;
-          case 'audio-high': return format.bitrate >= 192;
+          case 'hd': return (format.height || 0) >= 720;
+          case '8k': return (format.height || 0) >= 4320;
+          case '4k': return (format.height || 0) >= 2160;
+          case '2k': return (format.height || 0) >= 1440;
+          case 'fhd': return (format.height || 0) >= 1080;
+          case 'audio-high': return (format.bitrate || 0) >= 192;
           default: return true;
         }
       });
@@ -138,8 +147,8 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
       switch (sortBy) {
         case 'quality':
           const getQualityValue = (format) => {
-            if (format.height) return format.height;
-            if (format.bitrate) return format.bitrate;
+            if (format.height !== undefined && format.height !== null) return format.height;
+            if (format.bitrate !== undefined && format.bitrate !== null) return format.bitrate;
             return 0;
           };
           return getQualityValue(b) - getQualityValue(a);
@@ -157,10 +166,11 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
 
   const getQualityBadgeColor = (format) => {
     if (format.type === 'audio-only') return 'bg-green-600';
-    if (format.height >= 4320) return 'bg-red-600'; // 8K - Red
-    if (format.height >= 2160) return 'bg-purple-600'; // 4K - Purple
-    if (format.height >= 1080) return 'bg-blue-600'; // 1080p - Blue
-    if (format.height >= 720) return 'bg-yellow-600'; // 720p - Yellow
+    const height = format.height || 0;
+    if (height >= 4320) return 'bg-red-600'; // 8K - Red
+    if (height >= 2160) return 'bg-purple-600'; // 4K - Purple
+    if (height >= 1080) return 'bg-blue-600'; // 1080p - Blue
+    if (height >= 720) return 'bg-yellow-600'; // 720p - Yellow
     return 'bg-gray-600';
   };
 
@@ -297,14 +307,14 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
                           : format.type === 'subtitle'
                           ? format.language || 'Subtitle'
                           : format.type === 'thumbnail'
-                          ? `${format.width}x${format.height}`
-                          : `${format.height}p`
+                          ? `${format.width || 'N/A'}x${format.height || 'N/A'}`
+                          : `${format.height || 'Unknown'}p`
                         }
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-mono font-bold text-gray-800 uppercase bg-gray-100 px-2 py-1 rounded">
-                        {format.container}
+                        {format.container || 'Unknown'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -322,13 +332,14 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
                       <div className="flex space-x-2 justify-center">
                         <button
                           onClick={() => onDownload(format)}
-                          disabled={downloadingFormats.has(format.id)}
+          disabled={downloadingFormats.has(format.id)}
+          title={downloadingFormats.has(format.id) ? "Download in progress..." : "Download this format"}
                           className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-4 py-2 rounded-lg text-xs font-medium flex items-center space-x-2 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
                         >
                           {downloadingFormats.has(format.id) ? (
                             <>
                               <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                              <span>Downloading...</span>
+                              <span>{format.height >= 1080 ? 'Muxing...' : 'Downloading...'}</span>
                             </>
                           ) : (
                             <>
@@ -382,6 +393,10 @@ const DownloadOptionsPanel = ({ videoData, onDownload, onExtractLinks, downloadi
           <div className="flex items-start space-x-3">
             <span className="bg-purple-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</span>
             <span className="text-sm text-blue-800 font-medium">Audio-only formats are perfect for music downloads</span>
+          </div>
+          <div className="flex items-start space-x-3">
+            <span className="bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">⏳</span>
+            <span className="text-sm text-blue-800 font-medium">High quality videos (1080p+) may take 2-5 minutes due to audio mixing</span>
           </div>
         </div>
       </div>

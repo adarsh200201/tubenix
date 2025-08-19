@@ -42,7 +42,12 @@ const LiveDownloads = () => {
                 speed: statusData.speed || 'Calculating...',
                 eta: statusData.eta || 'Calculating...',
                 fileSize: statusData.fileSize || 'Unknown',
-                realTime: true
+                realTime: true,
+                // Enhanced audio tracking
+                isMuxed: statusData.isMuxed || false,
+                videoQuality: statusData.videoQuality || null,
+                audioQuality: statusData.audioQuality || null,
+                audioCodec: statusData.audioCodec || 'AAC'
               };
             }
             return download;
@@ -307,6 +312,18 @@ const LiveDownloads = () => {
                                   <span>Simulated Progress</span>
                                 </span>
                               )}
+                              {/* Audio information */}
+                              {download.isMuxed && (
+                                <span className="flex items-center space-x-1 text-purple-600">
+                                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                                  <span>🎬 Muxed Audio</span>
+                                </span>
+                              )}
+                              {download.audioCodec && (
+                                <span className="flex items-center space-x-1 text-green-600">
+                                  <span>🎵 {download.audioCodec}</span>
+                                </span>
+                              )}
                             </div>
                             </div>
                             <div className="flex items-center space-x-3">
@@ -341,6 +358,32 @@ const LiveDownloads = () => {
                               </div>
                             </div>
                           </div>
+
+                          {/* Audio Progress Details */}
+                          {(download.isMuxed || download.videoQuality || download.audioQuality) && (
+                            <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <span className="text-purple-700 font-medium text-sm">🎬 Audio Processing</span>
+                                {download.status === 'downloading' && (
+                                  <span className="text-xs text-purple-600 animate-pulse">Combining video + audio...</span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-xs text-purple-600">
+                                {download.videoQuality && (
+                                  <span>📹 Video: {download.videoQuality}</span>
+                                )}
+                                {download.audioQuality && (
+                                  <span>🔊 Audio: {download.audioQuality}</span>
+                                )}
+                                {download.audioCodec && (
+                                  <span>🎵 Codec: {download.audioCodec} (Compatible)</span>
+                                )}
+                                {download.isMuxed && (
+                                  <span>✅ Real-time Muxing</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Actions */}
                           {download.status === 'completed' && (

@@ -16,6 +16,9 @@ class HeadlessBrowserPool {
     this.pageTimeout = parseInt(process.env.PAGE_TIMEOUT) || 20000; // 20 seconds
     this.currentBrowserIndex = 0;
     this.activeTasks = new Map();
+    this.chromeInstallAttempted = false;
+    this.skipBrowserCreation = false;
+    this.failedAttempts = 0;
     
     // Browser configuration
     this.browserArgs = [
@@ -77,87 +80,147 @@ class HeadlessBrowserPool {
   }
 
   /**
-   * Create a new browser instance
+   * Create a new browser instance with enhanced error handling
    */
   async createBrowser() {
+    // Skip browser creation in production if Chrome installation fails
+    if (this.skipBrowserCreation) {
+      return null;
+    }
+
     try {
-      // Check if Chrome is available in the environment
       const isRenderEnvironment = process.env.RENDER || process.env.NODE_ENV === 'production';
 
       const launchOptions = {
         headless: 'new',
         args: this.browserArgs,
-        timeout: 15000, // 15 second launch timeout
+        timeout: 15000,
         ignoreDefaultArgs: ['--enable-automation'],
-        defaultViewport: { width: 375, height: 812 } // Mobile viewport
+        defaultViewport: { width: 375, height: 812 },
+        protocolTimeout: 30000
       };
 
       // Production environment configuration
       if (isRenderEnvironment) {
-        // Try multiple Chrome executable paths
+        // Enhanced path detection with dynamic version checking
+        const { execSync } = require('child_process');
+        const fs = require('fs');
+
         const possiblePaths = [
           process.env.PUPPETEER_EXECUTABLE_PATH,
-          '/opt/render/.cache/puppeteer/chrome/linux-139.0.7258.66/chrome-linux64/chrome',
+          process.env.CHROME_BIN,
           '/usr/bin/google-chrome',
           '/usr/bin/google-chrome-stable',
           '/usr/bin/chromium-browser',
           '/usr/bin/chromium',
-          puppeteer.executablePath()
+          '/opt/google/chrome/chrome'
         ].filter(Boolean);
 
+        // Check for dynamic Puppeteer cache paths
+        try {
+          const puppeteerCacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+          if (fs.existsSync(puppeteerCacheDir)) {
+            const chromeVersions = fs.readdirSync(`${puppeteerCacheDir}/chrome`).filter(v => v.startsWith('linux-'));
+            for (const version of chromeVersions) {
+              possiblePaths.push(`${puppeteerCacheDir}/chrome/${version}/chrome-linux64/chrome`);
+            }
+          }
+        } catch (e) {
+          // Ignore cache directory errors
+        }
+
+        // Add Puppeteer's default path
+        try {
+          possiblePaths.push(puppeteer.executablePath());
+        } catch (e) {
+          // Ignore if Puppeteer path detection fails
+        }
+
+        // Try each path
         for (const executablePath of possiblePaths) {
           try {
-            console.log(`🔍 Trying Chrome at: ${executablePath}`);
-            launchOptions.executablePath = executablePath;
-            const browser = await puppeteer.launch(launchOptions);
-            console.log(`✅ Successfully launched Chrome from: ${executablePath}`);
-            return browser;
+            // Check if file exists and is executable
+            if (fs.existsSync(executablePath)) {
+              console.log(`🔍 Trying Chrome at: ${executablePath}`);
+              launchOptions.executablePath = executablePath;
+              const browser = await puppeteer.launch(launchOptions);
+              console.log(`✅ Successfully launched Chrome from: ${executablePath}`);
+              return browser;
+            }
           } catch (pathError) {
             console.log(`❌ Failed with path ${executablePath}: ${pathError.message}`);
             continue;
           }
         }
 
-        // If all paths fail, try without executable path (use system Chrome)
-        delete launchOptions.executablePath;
+        // Final attempt without executablePath
+        try {
+          delete launchOptions.executablePath;
+          const browser = await puppeteer.launch(launchOptions);
+          console.log('✅ Browser launched using system default Chrome');
+          return browser;
+        } catch (systemError) {
+          console.log(`❌ System Chrome launch failed: ${systemError.message}`);
+        }
+      } else {
+        // Development environment
+        const browser = await puppeteer.launch(launchOptions);
+        console.log('🌐 New browser instance created');
+        return browser;
       }
-
-      const browser = await puppeteer.launch(launchOptions);
-      console.log('🌐 New browser instance created');
-      return browser;
 
     } catch (error) {
       console.error('❌ Failed to create browser:', error.message);
 
-      // Try to install Chrome and retry once
-      if (error.message.includes('Could not find Chrome')) {
+      // Try Chrome installation in production only once
+      if (error.message.includes('Could not find Chrome') && !this.chromeInstallAttempted) {
+        this.chromeInstallAttempted = true;
         console.log('🔧 Attempting to install Chrome...');
+
         try {
           const { exec } = require('child_process');
-          await new Promise((resolve, reject) => {
-            exec('npx puppeteer browsers install chrome', (err, stdout, stderr) => {
+          await new Promise((resolve) => {
+            const installTimeout = setTimeout(() => {
+              console.log('⏰ Chrome installation timeout');
+              resolve();
+            }, 60000); // 1 minute timeout
+
+            exec('npx puppeteer browsers install chrome', { timeout: 50000 }, (err, stdout, stderr) => {
+              clearTimeout(installTimeout);
               if (err) {
                 console.log('❌ Chrome installation failed:', err.message);
-                resolve(); // Don't reject, just continue
               } else {
                 console.log('✅ Chrome installation completed');
-                resolve();
               }
+              resolve();
             });
           });
 
-          // Retry browser creation after installation
-          const browser = await puppeteer.launch({
-            headless: 'new',
-            args: this.browserArgs,
-            timeout: 15000,
-            ignoreDefaultArgs: ['--enable-automation'],
-            defaultViewport: { width: 375, height: 812 }
-          });
-          console.log('🌐 Browser created after Chrome installation');
-          return browser;
+          // Single retry after installation
+          try {
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: this.browserArgs,
+              timeout: 15000,
+              ignoreDefaultArgs: ['--enable-automation'],
+              defaultViewport: { width: 375, height: 812 }
+            });
+            console.log('🌐 Browser created after Chrome installation');
+            return browser;
+          } catch (retryError) {
+            console.log('❌ Retry after installation failed:', retryError.message);
+          }
         } catch (installError) {
-          console.error('❌ Chrome installation and retry failed:', installError.message);
+          console.error('❌ Chrome installation process failed:', installError.message);
+        }
+      }
+
+      // Mark to skip future attempts if consistently failing
+      if (isRenderEnvironment && !this.skipBrowserCreation) {
+        this.failedAttempts = (this.failedAttempts || 0) + 1;
+        if (this.failedAttempts >= 3) {
+          console.log('🚫 Disabling browser creation after multiple failures');
+          this.skipBrowserCreation = true;
         }
       }
 

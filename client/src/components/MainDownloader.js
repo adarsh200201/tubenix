@@ -120,12 +120,11 @@ const MainDownloader = () => {
   useEffect(() => {
     if (url) {
       const platform = detectPlatform(url);
+      // Always show 'formats' tab by default to display all available data
       if (platform === 'Instagram') {
-        setActiveDownloadTab('instagram');
-      } else if (platform === 'YouTube') {
-        setActiveDownloadTab('formats');
+        setActiveDownloadTab('formats'); // Show all formats for Instagram too
       } else {
-        setActiveDownloadTab('formats');
+        setActiveDownloadTab('formats'); // Show all formats by default for all platforms
       }
     }
   }, [url]);
@@ -232,10 +231,19 @@ const MainDownloader = () => {
         const cleanQuality = extractQualityParameter(format);
         console.log(`🎯 Download request - Format: ${format.container}, Quality: ${cleanQuality}, Original: ${format.quality_label || format.resolution}, Height: ${format.height}`);
 
+        console.log('🔄 Starting download request...');
         const result = await downloadVideo(url, format.container.toLowerCase(), cleanQuality);
+        console.log('📥 Download result received:', {
+          success: result.success,
+          hasData: !!result.data,
+          dataType: result.data ? result.data.constructor.name : 'none',
+          downloadId: result.downloadId,
+          messagePreview: result.message ? result.message.substring(0, 50) : 'none'
+        });
 
         // Update the navigation state with the actual download ID
         if (result.downloadId) {
+          console.log('🔄 Updating navigation with download ID:', result.downloadId);
           // Re-navigate with the real download ID
           navigate('/live-downloads', {
             state: {
@@ -279,25 +287,99 @@ const MainDownloader = () => {
                 toast.loading(result.instructions, { duration: 6000 });
               }, 1500);
             }
+          } else if (result.data && result.data instanceof Blob) {
+            // Handle blob data - trigger actual file download
+            console.log('🔽 Triggering blob download:', {
+              format: format.container,
+              blobSize: result.data.size,
+              blobType: result.data.type,
+              hasHeaders: !!result.headers
+            });
+
+            try {
+              // Get filename from headers or generate one
+              const contentDisposition = result.headers['content-disposition'] || result.headers['Content-Disposition'];
+              let filename = `video_${format.height}p.${format.container}`;
+
+              console.log('📄 Content-Disposition header:', contentDisposition);
+
+              if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                  filename = filenameMatch[1].replace(/['"]/g, '');
+                  console.log('✅ Extracted filename:', filename);
+                }
+              }
+
+              console.log('🔗 Creating download URL for blob...');
+              // Create download link and trigger download
+              const downloadUrl = window.URL.createObjectURL(result.data);
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = filename;
+              link.style.display = 'none';
+              document.body.appendChild(link);
+
+              console.log('👆 Clicking download link...');
+              link.click();
+
+              // Clean up
+              setTimeout(() => {
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(downloadUrl);
+                console.log('🧹 Cleaned up download resources');
+              }, 100);
+
+              toast.success(`Download started: ${filename}`);
+              console.log('✅ File download triggered successfully');
+
+            } catch (blobError) {
+              console.error('❌ Blob download failed:', blobError);
+              toast.error('Failed to start download. Please try again.');
+            }
           } else {
             toast.success(result.message || 'Download started successfully!');
           }
         } else {
-          toast.error(result.message || 'Download failed');
-          if (result.suggestion) {
-            setTimeout(() => {
-              toast.loading(result.suggestion, { duration: 6000 });
-            }, 1000);
-          }
-          if (result.note) {
-            setTimeout(() => {
-              toast.loading(result.note, { duration: 4000 });
-            }, 2500);
-          }
-          if (result.availableQualities && result.availableQualities.length > 0) {
-            setTimeout(() => {
-              toast.loading(`Available qualities: ${result.availableQualities.join(', ')}`, { duration: 3000 });
-            }, 3500);
+          // Enhanced error handling for audio-related issues
+          if (result.message && result.message.includes('video-only') || result.message.includes('no audio')) {
+            toast.error('⚠️ Audio Issue: Selected quality has no audio', {
+              duration: 5000,
+              icon: '🔇'
+            });
+
+            if (result.availableQualitiesWithAudio && result.availableQualitiesWithAudio.length > 0) {
+              setTimeout(() => {
+                toast.success(`✅ Try these qualities with audio: ${result.availableQualitiesWithAudio.join(', ')}`, {
+                  duration: 8000,
+                  icon: '🔊'
+                });
+              }, 1500);
+            }
+
+            if (result.suggestion) {
+              setTimeout(() => {
+                toast.loading(result.suggestion, { duration: 8000 });
+              }, 3000);
+            }
+          } else {
+            toast.error(result.message || 'Download failed');
+
+            if (result.suggestion) {
+              setTimeout(() => {
+                toast.loading(result.suggestion, { duration: 6000 });
+              }, 1000);
+            }
+            if (result.note) {
+              setTimeout(() => {
+                toast.loading(result.note, { duration: 4000 });
+              }, 2500);
+            }
+            if (result.availableQualities && result.availableQualities.length > 0) {
+              setTimeout(() => {
+                toast.loading(`Available qualities: ${result.availableQualities.join(', ')}`, { duration: 3000 });
+              }, 3500);
+            }
           }
         }
       }

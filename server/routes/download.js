@@ -145,33 +145,35 @@ function generateStandardAudioFormats() {
 }
 
 // Helper function to track downloads
-async function trackDownload(downloadData) {
-  try {
-    console.log('📝 Tracking download:', downloadData.title);
+function trackDownload(downloadData) {
+  return (async () => {
+    try {
+      console.log('📝 Tracking download:', downloadData.title);
 
-    // Create a demo user or find existing one to track downloads
-    // For demo purposes, we'll create/update a demo user
-    let demoUser = await User.findOne({ email: 'demo@tubenix.com' });
+      // Create a demo user or find existing one to track downloads
+      // For demo purposes, we'll create/update a demo user
+      let demoUser = await User.findOne({ email: 'demo@tubenix.com' });
 
-    if (!demoUser) {
-      console.log('📝 Creating demo user for tracking...');
-      demoUser = new User({
-        name: 'Demo User',
-        email: 'demo@tubenix.com',
-        password: 'demopassword123', // Will be hashed
-        downloadHistory: []
-      });
+      if (!demoUser) {
+        console.log('📝 Creating demo user for tracking...');
+        demoUser = new User({
+          name: 'Demo User',
+          email: 'demo@tubenix.com',
+          password: 'demopassword123', // Will be hashed
+          downloadHistory: []
+        });
+      }
+
+      // Add to download history
+      demoUser.addToHistory(downloadData);
+      await demoUser.save();
+
+      console.log('✅ Download tracked successfully');
+    } catch (error) {
+      console.error('❌ Failed to track download:', error.message);
+      // Don't throw error to avoid interrupting download
     }
-
-    // Add to download history
-    demoUser.addToHistory(downloadData);
-    await demoUser.save();
-
-    console.log('✅ Download tracked successfully');
-  } catch (error) {
-    console.error('❌ Failed to track download:', error.message);
-    // Don't throw error to avoid interrupting download
-  }
+  })();
 }
 
 // Extract video metadata with simple 9xbuddy-like approach
@@ -658,7 +660,7 @@ router.post('/metadata', async (req, res) => {
 
         // Debug logging for categorized formats
         console.log(`📹 Video formats (progressive): ${videoFormats.length}`);
-        console.log('📹 Video formats details:', videoFormats.map(f => `${f.resolution} (${f.container})`));
+        console.log('��� Video formats details:', videoFormats.map(f => `${f.resolution} (${f.container})`));
         console.log(`🎬 Adaptive formats (video-only): ${adaptiveFormats.length}`);
         console.log('🎬 Adaptive formats details:', adaptiveFormats.map(f => `${f.resolution} (${f.container})`));
         console.log(`🎵 Audio formats: ${audioFormats.length}`);
@@ -1644,6 +1646,9 @@ router.post('/video', async (req, res) => {
             console.log(`✅ Audio-only format selected - download will work correctly`);
           }
 
+          // Generate download ID for tracking (MUST BE FIRST)
+          const downloadId = Date.now();
+
           // Set proper filename with actual quality
           const actualQuality = chosenFormat.qualityLabel || chosenFormat.quality || 'unknown';
           const actualContainer = chosenFormat.container || format;
@@ -1659,9 +1664,6 @@ router.post('/video', async (req, res) => {
           console.log('📄 Download filename:', filename);
           console.log('📋 Content-Type:', contentType);
           console.log('🆔 Download ID:', downloadId);
-
-          // Generate download ID for tracking
-          const downloadId = Date.now();
           const expectedSize = chosenFormat.contentLength;
 
           // Initialize download tracking
@@ -1729,15 +1731,19 @@ router.post('/video', async (req, res) => {
             } else {
               console.log(`✅ Download completed successfully: ${receivedBytes} bytes`);
 
-              // Track download in database (async, don't wait)
-              trackDownload({
-                url: url,
-                title: info.videoDetails.title || 'Unknown Video',
-                platform: platform,
-                format: actualContainer || format,
-                quality: actualQuality,
-                fileSize: formatFileSize(receivedBytes)
-              }).catch(err => console.log('📝 Download tracking failed:', err.message));
+              // Track download in database (async, don't wait) - safely wrapped to prevent backend crashes
+              try {
+                trackDownload({
+                  url: url,
+                  title: info.videoDetails.title || 'Unknown Video',
+                  platform: platform,
+                  format: actualContainer || format,
+                  quality: actualQuality,
+                  fileSize: formatFileSize(receivedBytes)
+                }).catch(err => console.log('📝 Download tracking failed:', err.message));
+              } catch (trackErr) {
+                console.log('📝 Download tracking setup failed:', trackErr.message);
+              }
             }
           });
 

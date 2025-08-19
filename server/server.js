@@ -148,13 +148,31 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Global error handlers for unhandled promises
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('🚨 Uncaught Exception:', error);
+  // Don't exit the process, just log the error
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  res.status(500).json({ 
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : error.message 
+  console.error('🔴 Express Error:', error);
+
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  res.status(500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : error.message,
+    timestamp: new Date().toISOString()
   });
 });
 

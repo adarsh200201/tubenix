@@ -13,15 +13,100 @@ const api = axios.create({
   timeout: 0, // No timeout restrictions as requested
 });
 
-// Add request retry functionality
-const MAX_RETRIES = 2;
-const RETRY_DELAY = 1000;
+// Add request retry functionality with exponential backoff
+const MAX_RETRIES = 3;
+const BASE_RETRY_DELAY = 2000; // 2 seconds base delay
+const MAX_RETRY_DELAY = 30000; // 30 seconds max delay
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Request interceptor for loading states
+// Enhanced request throttling and queuing system
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 2000; // Increased to 2 seconds between requests
+let requestQueue = [];
+let isProcessingQueue = false;
+let consecutiveFailures = 0;
+let backoffMultiplier = 1;
+
+// Request queue to prevent concurrent API calls
+const processRequestQueue = async () => {
+  if (isProcessingQueue || requestQueue.length === 0) {
+    return;
+  }
+
+  isProcessingQueue = true;
+
+  while (requestQueue.length > 0) {
+    const { config, resolve, reject } = requestQueue.shift();
+
+    try {
+      // Apply exponential backoff based on consecutive failures
+      const effectiveInterval = MIN_REQUEST_INTERVAL * backoffMultiplier;
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTime;
+
+      if (timeSinceLastRequest < effectiveInterval) {
+        const delay = effectiveInterval - timeSinceLastRequest;
+        console.log(`🛑 Global rate limit: waiting ${Math.round(delay/1000)}s (backoff: ${backoffMultiplier}x)`);
+        await sleep(delay);
+      }
+
+      lastRequestTime = Date.now();
+
+      // Make the actual request
+      const response = await axios(config);
+
+      // Reset backoff on success
+      consecutiveFailures = 0;
+      backoffMultiplier = 1;
+
+      resolve(response);
+
+    } catch (error) {
+      // Handle rate limiting specifically
+      if (error.response?.status === 429) {
+        consecutiveFailures++;
+        backoffMultiplier = Math.min(consecutiveFailures * 2, 8); // Max 8x backoff
+        console.log(`🚨 Rate limited! Consecutive failures: ${consecutiveFailures}, backoff: ${backoffMultiplier}x`);
+
+        // Re-queue the request for retry
+        requestQueue.unshift({ config, resolve, reject });
+
+        // Wait longer before retrying
+        const retryDelay = 5000 * backoffMultiplier;
+        console.log(`⏳ Waiting ${retryDelay/1000}s before retry...`);
+        await sleep(retryDelay);
+        continue;
+      }
+
+      reject(error);
+    }
+  }
+
+  isProcessingQueue = false;
+};
+
+// Queue a request instead of making it immediately
+const queueRequest = (config) => {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ config, resolve, reject });
+    processRequestQueue();
+  });
+};
+
+// Request interceptor with queue-based throttling
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    // Skip queuing for health checks if they're too frequent
+    if (config.url?.includes('/health')) {
+      const now = Date.now();
+      if (now - lastRequestTime < 10000) { // Only allow health checks every 10 seconds
+        console.log('🛑 Skipping frequent health check');
+        throw new Error('Health check throttled');
+      }
+    }
+
+    // Use queue for all other requests
     return config;
   },
   (error) => {
@@ -29,26 +114,67 @@ api.interceptors.request.use(
   }
 );
 
+// Replace the default axios instance methods to use queuing
+const originalPost = api.post;
+
+api.post = function(url, data, config = {}) {
+  return queueRequest({
+    ...config,
+    method: 'POST',
+    url,
+    data,
+    baseURL: this.defaults.baseURL,
+    headers: { ...this.defaults.headers, ...config.headers }
+  });
+};
+
+api.get = function(url, config = {}) {
+  return queueRequest({
+    ...config,
+    method: 'GET',
+    url,
+    baseURL: this.defaults.baseURL,
+    headers: { ...this.defaults.headers, ...config.headers }
+  });
+};
+
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error Details:', {
+    // Enhanced error logging with proper object serialization
+    const errorDetails = {
       url: error.config?.url,
       method: error.config?.method,
       status: error.response?.status,
       statusText: error.response?.statusText,
       data: error.response?.data,
-      message: error.message
-    });
+      message: error.message,
+      code: error.code
+    };
+
+    // Log detailed error information properly
+    console.error('API Error Details:', JSON.stringify(errorDetails, null, 2));
 
     // Log a clean error message for debugging
     console.error(`API Error: ${error.response?.status || 'Unknown'} - ${error.message}`);
 
-    const message = error.response?.data?.error ||
-                   error.response?.data?.message ||
-                   error.message ||
-                   'Something went wrong';
+    // Extract meaningful error message
+    let message = 'Something went wrong';
+
+    if (error.response?.data) {
+      if (typeof error.response.data === 'string') {
+        message = error.response.data;
+      } else if (error.response.data.error) {
+        message = error.response.data.error;
+      } else if (error.response.data.message) {
+        message = error.response.data.message;
+      } else if (typeof error.response.data === 'object') {
+        message = JSON.stringify(error.response.data);
+      }
+    } else if (error.message) {
+      message = error.message;
+    }
 
     // Add specific error messages for common issues
     if (error.code === 'ECONNREFUSED') {
@@ -80,6 +206,19 @@ api.interceptors.response.use(
       }
 
       return Promise.reject(new Error(serviceUnavailableMessage));
+    }
+
+    // Improved network error handling
+    if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+      return Promise.reject(new Error('Network connection error. Please check your internet connection and try again.'));
+    }
+
+    if (error.code === 'ENOTFOUND' || error.code === 'ERR_NETWORK') {
+      return Promise.reject(new Error('Cannot connect to server. Please check if the backend server is running.'));
+    }
+
+    if (error.code === 'ECONNABORTED') {
+      return Promise.reject(new Error('Request timeout. The server is taking too long to respond.'));
     }
 
     if (error.response?.status === 404) {
@@ -120,19 +259,48 @@ export const extractVideoMetadata = async (url, retryCount = 0) => {
 
     return response.data;
   } catch (error) {
-    // Simple retry logic like 9xbuddy
-    if (retryCount < MAX_RETRIES && (
-      error.message.includes('Server Error') ||
-      error.message.includes('Service busy') ||
-      error.message.includes('timeout')
-    )) {
-      console.log(`Retrying metadata extraction... (${retryCount + 1}/${MAX_RETRIES})`);
-      await sleep(RETRY_DELAY * (retryCount + 1));
+    // Enhanced retry logic with exponential backoff for rate limiting
+    const isRateLimited = error.response?.status === 429;
+    const isServerError = error.response?.status >= 500;
+    const isTimeout = error.message.includes('timeout') || error.code === 'ECONNABORTED';
+    const isNetworkError = error.code === 'NETWORK_ERROR' || error.message === 'Network Error' ||
+                          error.code === 'ENOTFOUND' || error.code === 'ERR_NETWORK';
+    const shouldRetry = (isRateLimited || isServerError || isTimeout) && !isNetworkError &&
+                       !error.message.includes('Service busy');
+
+    if (shouldRetry && retryCount < MAX_RETRIES) {
+      // Calculate exponential backoff delay
+      const baseDelay = isRateLimited ? BASE_RETRY_DELAY * 2 : BASE_RETRY_DELAY;
+      const exponentialDelay = Math.min(
+        baseDelay * Math.pow(2, retryCount),
+        MAX_RETRY_DELAY
+      );
+
+      // Add jitter to avoid thundering herd
+      const jitter = exponentialDelay * 0.25 * Math.random();
+      const finalDelay = exponentialDelay + jitter;
+
+      const delaySeconds = Math.round(finalDelay / 1000);
+      console.log(`🛑 ${isRateLimited ? 'Rate limited' : 'Request failed'}, retrying in ${delaySeconds}s... (${retryCount + 1}/${MAX_RETRIES})`);
+
+      await sleep(finalDelay);
       return extractVideoMetadata(url, retryCount + 1);
     }
     console.error('❌ Failed to extract metadata:', error.message);
 
     // Provide more specific error messages
+    if (error.response?.status === 429 || error.message.includes('rate limit')) {
+      throw new Error('Rate limit reached. Please wait 2-3 minutes and try again.');
+    }
+
+    if (error.response?.status === 503) {
+      const responseData = error.response?.data;
+      if (responseData?.userFriendly && responseData?.message) {
+        throw new Error(responseData.message);
+      }
+      throw new Error('Backend service temporarily unavailable. Please try again in a few minutes.');
+    }
+
     if (error.message.includes('Invalid YouTube URL')) {
       throw new Error('Please provide a valid YouTube URL');
     }
@@ -178,15 +346,18 @@ export const extractDownloadLinks = async (url, format, quality) => {
 };
 
 // Download video with enhanced options
-export const downloadVideo = async (url, format = 'mp4', quality = 'best') => {
+export const downloadVideo = async (url, format = 'mp4', quality = 'best', options = {}) => {
   try {
-    const response = await api.post('/download/video', {
+    const response = await originalPost.call(api, '/download/video', {
       url,
       format,
-      quality
+      quality,
+      directUrl: options.directUrl,
+      title: options.title,
+      mimeType: options.mimeType
     }, {
       responseType: 'blob',
-      timeout: 0 // No timeout restriction as requested
+      timeout: 600000 // 10 minutes timeout for muxing operations (2160p can be large)
     });
 
     // Extract download ID from response headers for tracking
@@ -213,21 +384,10 @@ export const downloadVideo = async (url, format = 'mp4', quality = 'best') => {
         }
       }
 
-      // It's actually a video/audio blob - trigger download
-      const downloadUrl = window.URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-
-      // Generate filename based on format and quality
-      const filename = `video_${quality}.${format}`;
-      link.download = filename;
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-
+      // Return the blob data for manual download handling
       return {
+        data: response.data,
+        headers: response.headers,
         success: true,
         message: 'Download started successfully!',
         downloadId: downloadId
@@ -298,7 +458,33 @@ export const downloadVideo = async (url, format = 'mp4', quality = 'best') => {
       }
     }
   } catch (error) {
-    throw error;
+    // Enhanced error handling for download failures
+    if (error.response?.status === 503) {
+      const responseData = error.response?.data;
+      if (responseData?.userFriendly && responseData?.message) {
+        throw new Error(responseData.message);
+      }
+      throw new Error('Download service temporarily unavailable. This could be due to:\n• YouTube anti-bot measures\n• Server overload\n• Backend deployment issues\n\nSuggestions:\n• Try again in a few minutes\n• Use Extract Links feature\n• Try a different video quality');
+    }
+
+    if (error.response?.status === 429) {
+      throw new Error('Rate limit reached. Please wait 2-3 minutes before trying again.');
+    }
+
+    if (error.response?.status === 404) {
+      throw new Error('Video not found or may have been removed.');
+    }
+
+    if (error.response?.status === 403) {
+      throw new Error('Video is private or restricted and cannot be downloaded.');
+    }
+
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      throw new Error('Download request timed out. The video may be too large or server is busy.');
+    }
+
+    // Default error message
+    throw new Error(error.response?.data?.message || error.message || 'Download failed. Please try again.');
   }
 };
 
@@ -413,6 +599,9 @@ export const getInstagramInfo = async (url) => {
   }
 };
 
+// Note: Direct URL downloads from browser are blocked by CORS
+// Use backend API or download links instead
+
 export const checkInstagramUrl = async (url) => {
   try {
     const response = await api.get(`/instagram/check?url=${encodeURIComponent(url)}`);
@@ -523,7 +712,7 @@ export const getDownloadStatus = async (downloadId, url, format, quality) => {
     });
     return response.data;
   } catch (error) {
-    console.error('❌ Failed to get download status:', error.message);
+    console.error('�� Failed to get download status:', error.message);
 
     // If 404, the endpoint doesn't exist in production yet
     if (error.message.includes('404') || error.message.includes('Not Found')) {
