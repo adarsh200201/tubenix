@@ -34,11 +34,12 @@ class YouTubeDownloader {
     ];
 
     this.lastRequestTime = 0;
-    this.requestDelay = 1500; // 1.5 seconds between requests
+    this.requestDelay = 3000; // 3 seconds between requests (increased for rate limiting)
     this.failureCount = 0;
-    this.maxRetries = 5; // Increased retries
-    this.baseDelay = 1500; // Base delay of 1.5 seconds
-    this.maxDelay = 45000; // Max delay of 45 seconds
+    this.maxRetries = 3; // Reduced retries to avoid hitting limits
+    this.baseDelay = 3000; // Base delay of 3 seconds
+    this.maxDelay = 120000; // Max delay of 2 minutes
+    this.rateLimitBackoff = 1; // Rate limit backoff multiplier
     
     // Additional bot evasion properties
     this.sessionHeaders = this.generateSessionHeaders();
@@ -112,22 +113,35 @@ class YouTubeDownloader {
   }
 
   /**
-   * Add realistic delays and jitter to avoid rate limiting
+   * Add realistic delays and jitter to avoid rate limiting with exponential backoff
    */
-  async addRandomDelay() {
+  async addRandomDelay(isRateLimited = false) {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    
-    if (timeSinceLastRequest < this.requestDelay) {
-      const waitTime = this.requestDelay - timeSinceLastRequest;
-      // Add jitter (±30%)
-      const jitter = waitTime * 0.3 * (Math.random() - 0.5);
-      const finalWaitTime = Math.max(500, waitTime + jitter);
-      
-      console.log(`⏳ Rate limiting: waiting ${Math.round(finalWaitTime)}ms...`);
+
+    let waitTime = this.requestDelay;
+
+    // If we hit rate limits, increase backoff exponentially
+    if (isRateLimited) {
+      this.rateLimitBackoff = Math.min(this.rateLimitBackoff * 2, 16); // Cap at 16x
+      waitTime = this.baseDelay * this.rateLimitBackoff;
+      console.log(`🚦 Rate limit detected! Increasing backoff to ${this.rateLimitBackoff}x`);
+    } else {
+      // Gradually reduce backoff if no rate limits
+      this.rateLimitBackoff = Math.max(this.rateLimitBackoff * 0.8, 1);
+    }
+
+    // Ensure minimum delay since last request
+    if (timeSinceLastRequest < waitTime) {
+      const actualWaitTime = waitTime - timeSinceLastRequest;
+      // Add jitter (±20% to be less aggressive)
+      const jitter = actualWaitTime * 0.2 * (Math.random() - 0.5);
+      const finalWaitTime = Math.max(1000, actualWaitTime + jitter); // Minimum 1 second
+
+      console.log(`⏳ Rate limiting: waiting ${Math.round(finalWaitTime)}ms (backoff: ${this.rateLimitBackoff}x)...`);
       await new Promise(resolve => setTimeout(resolve, finalWaitTime));
     }
-    
+
     this.lastRequestTime = Date.now();
   }
 
@@ -175,9 +189,10 @@ class YouTubeDownloader {
         const config = configs[i];
         try {
           console.log(`Trying configuration ${i + 1}/${configs.length} with ${config.requestOptions.headers['User-Agent'].substring(0, 30)}...`);
-          
-          await this.addRandomDelay();
-          
+
+          // Add delay with rate limit consideration
+          await this.addRandomDelay(lastError && lastError.message.includes('429'));
+
           const info = await ytdl.getInfo(url, config);
 
           if (info && info.formats && info.formats.length > 0) {
@@ -214,16 +229,24 @@ class YouTubeDownloader {
         } catch (configError) {
           lastError = configError;
           console.error(`❌ Failed with config ${i + 1}: ${configError.message.substring(0, 100)}...`);
-          
+
+          // Handle rate limiting specifically
+          if (configError.message.includes('429') || configError.message.includes('Too Many Requests')) {
+            console.log('🚦 Rate limit hit - implementing exponential backoff');
+            const backoffDelay = Math.min(5000 * Math.pow(2, i), 60000); // 5s, 10s, 20s, max 60s
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+          }
+
           // If it's a bot detection error, try next config faster
-          if (configError.message.includes('Sign in to confirm') || 
+          if (configError.message.includes('Sign in to confirm') ||
               configError.message.includes('bot')) {
             console.log('🔄 Trying next configuration for error:', configError.message.substring(0, 50));
             continue;
           }
-          
+
           // For other errors, add a small delay
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Increased from 1s to 2s
         }
       }
 
@@ -232,6 +255,113 @@ class YouTubeDownloader {
 
     } catch (error) {
       console.error('ytdl-core method failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Alternative web scraping method when ytdl-core fails
+   */
+  async tryWebScraping(url) {
+    try {
+      console.log('🔄 Trying web scraping method...');
+
+      const videoId = this.extractVideoId(url);
+      if (!videoId) {
+        return { success: false, error: 'Invalid video ID' };
+      }
+
+      await this.addRandomDelay();
+
+      const response = await axios.get(url, {
+        headers: this.getSessionHeaders(),
+        timeout: 15000
+      });
+
+      if (response.status === 200) {
+        const html = response.data;
+
+        // Try to extract basic video information from page
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+        const title = titleMatch ? titleMatch[1].replace(' - YouTube', '') : `Video ${videoId}`;
+
+        // Look for player config data
+        const playerConfigMatch = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+
+        if (playerConfigMatch) {
+          try {
+            const playerData = JSON.parse(playerConfigMatch[1]);
+
+            if (playerData.streamingData &&
+                (playerData.streamingData.formats || playerData.streamingData.adaptiveFormats)) {
+
+              console.log('✅ Web scraping extraction successful');
+
+              const allFormats = [
+                ...(playerData.streamingData.formats || []),
+                ...(playerData.streamingData.adaptiveFormats || [])
+              ];
+
+              const formats = allFormats.map(format => ({
+                itag: format.itag,
+                url: format.url,
+                mimeType: format.mimeType,
+                quality: format.qualityLabel || format.quality,
+                qualityLabel: format.qualityLabel,
+                width: format.width,
+                height: format.height,
+                fps: format.fps,
+                bitrate: format.bitrate,
+                audioBitrate: format.audioBitrate,
+                audioCodec: format.audioCodec,
+                videoCodec: format.videoCodec,
+                container: format.container,
+                hasVideo: format.hasVideo,
+                hasAudio: format.hasAudio,
+                contentLength: format.contentLength,
+                approxDurationMs: format.approxDurationMs
+              }));
+
+              return {
+                success: true,
+                info: {
+                  videoDetails: {
+                    title: title,
+                    videoId: videoId,
+                    author: { name: 'YouTube Channel' },
+                    lengthSeconds: playerData.videoDetails?.lengthSeconds || 0,
+                    thumbnails: playerData.videoDetails?.thumbnail?.thumbnails || []
+                  },
+                  formats: formats
+                }
+              };
+            }
+          } catch (parseError) {
+            console.error('❌ Failed to parse player config:', parseError.message);
+          }
+        }
+
+        // If we can't extract streaming data, create a basic response
+        console.log('⚠️ Could not extract streaming data, creating basic response');
+        return {
+          success: true,
+          info: {
+            videoDetails: {
+              title: title,
+              videoId: videoId,
+              author: { name: 'YouTube Channel' },
+              lengthSeconds: 0,
+              thumbnails: [{ url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` }]
+            },
+            formats: [] // Empty formats - will trigger fallback in calling code
+          }
+        };
+      }
+
+      return { success: false, error: `HTTP ${response.status}` };
+
+    } catch (error) {
+      console.error('❌ Web scraping method failed:', error.message);
       return { success: false, error: error.message };
     }
   }
@@ -254,7 +384,14 @@ class YouTubeDownloader {
       return ytdlResult;
     }
 
-    // If all methods fail, provide helpful fallback
+    // Try web scraping method as fallback
+    const scrapingResult = await this.tryWebScraping(url);
+    if (scrapingResult.success && scrapingResult.info.formats.length > 0) {
+      console.log('✅ Web scraping method successful');
+      return scrapingResult;
+    }
+
+    // If all extraction methods fail, provide helpful fallback
     throw new Error('YouTube has temporarily blocked extraction. This is usually temporary - please try again in a few minutes.');
   }
 

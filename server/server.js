@@ -1,9 +1,14 @@
+// Disable ytdl-core update check BEFORE any imports
+process.env.YTDL_NO_UPDATE = '1';
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
+
+console.log('🔇 ytdl-core update check disabled');
 
 const app = express();
 const PORT = process.env.PORT || 5000;

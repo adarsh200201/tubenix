@@ -126,6 +126,41 @@ const About = () => {
           </div>
         </div>
       </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6, duration: 0.6 }}
+        className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-8 mt-8"
+      >
+        <h2 className="text-2xl font-bold text-amber-800 dark:text-amber-200 mb-6 text-center">
+          Legal Use Notice
+        </h2>
+
+        <div className="space-y-4 text-amber-700 dark:text-amber-300">
+          <p className="leading-relaxed">
+            <strong>Tubenix is a legitimate tool</strong> designed for personal use, similar to other popular video downloaders like yt-dlp, youtube-dl, and browser extensions.
+          </p>
+
+          <p className="leading-relaxed">
+            <strong>Personal Use:</strong> Downloading videos for personal, offline viewing is generally legal in most jurisdictions, similar to recording TV shows or saving articles for later reading.
+          </p>
+
+          <p className="leading-relaxed">
+            <strong>Respect Copyright:</strong> Users are responsible for respecting copyright laws and platform terms of service. Do not redistribute downloaded content commercially without permission.
+          </p>
+
+          <p className="leading-relaxed">
+            <strong>Platform Terms:</strong> While downloading may be technically possible, users should be aware of individual platform terms of service.
+          </p>
+
+          <div className="bg-amber-100 dark:bg-amber-900/40 rounded-lg p-4 mt-6">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              📝 Disclaimer: Tubenix provides technology for legitimate personal use. Users are responsible for complying with applicable laws and platform terms in their jurisdiction.
+            </p>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 };

@@ -108,9 +108,9 @@ class StreamingDownloader {
 
           // Add progressive delay with jitter to avoid rate limiting
           if (i > 0) {
-            const baseDelay = 1500 * i; // 1.5s, 3s, 4.5s...
-            const jitter = baseDelay * 0.3 * (Math.random() - 0.5); // ±30% jitter
-            const finalDelay = Math.max(500, baseDelay + jitter);
+            const baseDelay = 3000 * i; // 3s, 6s, 9s... (increased for rate limiting)
+            const jitter = baseDelay * 0.2 * (Math.random() - 0.5); // ±20% jitter (reduced aggression)
+            const finalDelay = Math.max(2000, baseDelay + jitter); // Minimum 2 seconds
             console.log(`⏳ Rate limiting: waiting ${Math.round(finalDelay)}ms before next attempt...`);
             await new Promise(resolve => setTimeout(resolve, finalDelay));
           }
@@ -129,9 +129,10 @@ class StreamingDownloader {
             // Don't retry for these errors - they won't resolve with different configs
             console.log('❌ Video access error - stopping retry attempts');
             break;
-          } else if (error.message.includes('too many requests') || error.message.includes('rate limit')) {
-            console.log('🚦 Rate limit detected - adding delay before next attempt');
-            await new Promise(resolve => setTimeout(resolve, 3000));
+          } else if (error.message.includes('too many requests') || error.message.includes('rate limit') || error.message.includes('429')) {
+            console.log('🚦 Rate limit detected - implementing exponential backoff');
+            const backoffDelay = Math.min(10000 * Math.pow(2, i), 120000); // 10s, 20s, 40s, max 2 minutes
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
             continue;
           }
 
@@ -509,11 +510,31 @@ class StreamingDownloader {
         { quality: '128kbps', isAudio: true, type: 'audio', note: '🎵 Standard Audio' }
       ];
 
+      // Try to get real title from the page
+      let realTitle = `Video ${videoId}`;
+      try {
+        const axios = require('axios');
+        const response = await axios.get(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          },
+          timeout: 10000
+        });
+
+        const titleMatch = response.data.match(/<title>([^<]+)<\/title>/);
+        if (titleMatch) {
+          realTitle = titleMatch[1].replace(' - YouTube', '').trim();
+          console.log(`✅ Extracted real title: ${realTitle}`);
+        }
+      } catch (titleError) {
+        console.log('⚠️ Could not extract real title, using fallback');
+      }
+
       // Create mock response similar to ytdl-core structure
       const mockInfo = {
         info: {
           videoDetails: {
-            title: `Video ${videoId}`,
+            title: realTitle,
             author: { name: 'YouTube Channel' },
             lengthSeconds: 0,
             videoId: videoId,
