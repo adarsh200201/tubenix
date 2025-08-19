@@ -342,7 +342,7 @@ const MainDownloader = () => {
           }
         } else {
           // Enhanced error handling for audio-related issues
-          if (result.message && result.message.includes('video-only') || result.message.includes('no audio')) {
+          if (result.message && (result.message.includes('video-only') || result.message.includes('no audio'))) {
             toast.error('⚠️ Audio Issue: Selected quality has no audio', {
               duration: 5000,
               icon: '🔇'
