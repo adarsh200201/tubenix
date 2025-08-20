@@ -100,6 +100,7 @@ app.use('/api/instagram', require('./routes/instagram'));
 app.use('/api/platforms', require('./routes/platforms'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/debug', require('./routes/debug'));
 
 // General routes (with error handling)
 try {
